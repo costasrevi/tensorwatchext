@@ -6,10 +6,12 @@ from confluent_kafka.admin import AdminClient
 
 import collections
 from datetime import datetime
+import time
 
 from .watcher import Watcher
 
 import threading
+from queue import Queue
 
 #imported parsers here that need no install
 import json
@@ -50,7 +52,7 @@ class kafka_contector(threading.Thread):
     def quit(self):
         self._quit.set()        
 
-    def __init__(self, hosts:str=None, topic:str=None, parsetype:str=None, parser_extra:str=None, queue_length:int=None,
+    def __init__(self, hosts:str=None, topic:str=None, parsetype:str=None, parser_extra:str=None, queue_length:int=None, cluster_size:int=1,
     #pykfka settings        cluster:str=None, consumer_group:str=None, partitions:str=None,
     fetch_message_max_bytes:int=1024 * 1024, num_consumer_fetchers:int=1, auto_commit_enable:bool=False,
     auto_commit_interval_ms:int=60 * 1000, queued_max_messages:int=2000, fetch_min_bytes:int=1,  fetch_error_backoff_ms:int=500, fetch_wait_max_ms:int=100,
@@ -59,6 +61,7 @@ class kafka_contector(threading.Thread):
         super().__init__()
         self.hosts = hosts
         self.topic = topic
+        self.cluster_size=cluster_size
         self.size=0
         # self.pykfka_setting=pykfka_setting
         self.kafka_thread = None
@@ -105,12 +108,12 @@ class kafka_contector(threading.Thread):
             except: 
                 print("avro second error not installed"+ json.loads(parser_extra))
                 return
-        elif self.parsetype.lower()=='protobuf' :
-            try:
-                import ParseFromString
-            except: 
-                print("ParseFromString not installed")
-                return
+        # elif self.parsetype.lower()=='protobuf' :
+        #     try:
+        #         import ParseFromString
+        #     except: 
+        #         print("ParseFromString not installed")
+        #         return
         self.start()
 
     #trying to add deferent libraries for deserializing the kafka messages
@@ -119,10 +122,10 @@ class kafka_contector(threading.Thread):
             return json.loads(message)
         elif self.parsetype.lower()=='pickle' :
             return pickle.loads(message)
-        elif self.parsetype.lower()=='thrift' :
+        # elif self.parsetype.lower()=='thrift' :
             # transportIn = TTransport.TMemoryBuffer(message)
             # return TBinaryProtocol.TBinaryProtocol(transportIn)
-            TDeserializer.deserialize(parser_extra, data)
+            # return TDeserializer.deserialize(self.parser_extra, message)
         elif self.parsetype.lower()=='xml' :
             xml = bytes(bytearray(message, encoding = 'utf-8'))
             return ET.parse(xml)
@@ -132,7 +135,7 @@ class kafka_contector(threading.Thread):
                 s = str(message, 'utf-8')
             elif self.parser_extra == "ascii":
                 s = str(message, 'ascii')
-            return ParseFromString(s)
+            # return ParseFromString(s)
             # import base64
             # s = base64.b64decode(data).decode('utf-8')
             # message.ParseFromString(s)
@@ -152,40 +155,48 @@ class kafka_contector(threading.Thread):
             return event_dict
         return 'error:unkown type of parsing'
 
+    def consumer(self):
+        print("consumer start")
+        if self.hosts is None:
+            c = Consumer({
+            'bootstrap.servers': 'localhost:9093',
+            'group.id': 'mygroup',
+            'auto.offset.reset': 'earliest'
+            })
+        else:  
+            print("else")
+            c = Consumer({
+            'bootstrap.servers': self.hosts,
+            'group.id': 'mygroup',
+            'auto.offset.reset': 'earliest'
+            })
+        c.subscribe([self.topic])
+        while True:
+            msg = c.poll(0.4)
+            if msg is None:
+                continue
+            if msg.error():
+                print("Consumer error: {}".format(msg.error()))
+                continue
+            temp=self.myparser(format(msg.value().decode('utf-8')))#,parsetype)
+            # print(temp)
+            temp["Date"]= datetime.strptime(temp["Date"], '%d/%b/%Y:%H:%M:%S')#just for our testing will be removed later
+            temp["recDate"]=datetime.now() #also that perhaps ?
+            if self.data.full:
+                self.data.get()
+            self.data.append(temp)
+            self.size+=1
+
     def run(self):
-        kafkaext='confluent'
+        # kafkaext='confluent'
         # kafkaext='pykfka'
         w = Watcher()
         #queue_length is the maximum messages that will be kept in memory
         if self.queue_length is None:
-            data = collections.deque(maxlen=5000)
+            self.data=Queue(maxsize=5000)
         else:
-            data = collections.deque(maxlen=queue_length)
-
-        if kafkaext=='pykfka':
-            if self.hosts is None:
-                client = KafkaClient(hosts="127.0.0.1:9093")
-            else:
-                print("else")
-                client = KafkaClient(hosts=self.hosts)
-            topic = client.topics[self.topic]
-            consumer = topic.get_simple_consumer(fetch_message_max_bytes=self.fetch_message_max_bytes,
-            num_consumer_fetchers=self.num_consumer_fetchers, auto_commit_enable=self.auto_commit_enable, auto_commit_interval_ms=self.auto_commit_interval_ms, queued_max_messages=self.queued_max_messages, 
-            fetch_min_bytes=self.fetch_min_bytes, fetch_error_backoff_ms=self.fetch_error_backoff_ms, fetch_wait_max_ms=self.fetch_wait_max_ms, offsets_channel_backoff_ms=self.offsets_channel_backoff_ms, 
-            offsets_commit_max_retries=self.offsets_commit_max_retries, auto_offset_reset=self.auto_offset_reset, consumer_timeout_ms=self.consumer_timeout_ms, auto_start=self.auto_start,
-            reset_offset_on_start=self.reset_offset_on_start, compacted_topic=self.compacted_topic, generation_id=self.generation_id, consumer_id=self.consumer_id, reset_offset_on_fetch=self.reset_offset_on_fetch )
-            for message in consumer:
-                timen=datetime.now()
-                if message is not None:
-                    temp=self.myparser(message.value)#,parsetype)
-                    # print(temp)
-                    temp["Date"]= datetime.strptime(temp["Date"], '%d/%b/%Y:%H:%M:%S')#just for our testing will be removed later
-                    temp["recDate"]=datetime.now() #also that perhaps ?
-                    data.append(temp)
-                    self.size+=1
-                    w.observe(data=list(collections.deque(data)),size=self.size)
-        
-        elif kafkaext=='confluent':
+            self.data=Queue(maxsize=self.queue_length)
+        if self.cluster_size==1:
             if self.hosts is None:
                 c = Consumer({
                 'bootstrap.servers': 'localhost:9093',
@@ -201,19 +212,60 @@ class kafka_contector(threading.Thread):
                 })
             c.subscribe([self.topic])
             while True:
-                msg = c.poll(0.1)
+                msg = c.poll(0.4)
                 if msg is None:
                     continue
                 if msg.error():
                     print("Consumer error: {}".format(msg.error()))
                     continue
                 temp=self.myparser(format(msg.value().decode('utf-8')))#,parsetype)
-                # print(temp)
+                print(temp)
                 temp["Date"]= datetime.strptime(temp["Date"], '%d/%b/%Y:%H:%M:%S')#just for our testing will be removed later
                 temp["recDate"]=datetime.now() #also that perhaps ?
-                data.append(temp)
+                print("before if")
+                if self.data.full():
+                    self.data.get()
+                print("before put")
+                self.data.put(temp)
+                print("after put")
                 self.size+=1
-                w.observe(data=list(collections.deque(data)),size=self.size)
+                w.observe(data=list(self.data.queue),size=self.size)
+        else:
+            thread=[]
+            for x in range(self.cluster_size):
+                thread.append(threading.Thread(target = self.consumer, args=()))
+                thread[x].daemon = True
+                thread[x].start()
+            while True:
+                w.observe(data=list(self.data.queue),size=self.size)
+                time.sleep(0.5)
+        # if kafkaext=='pykfka':
+        #     if self.hosts is None:
+        #         client = KafkaClient(hosts="127.0.0.1:9093")
+        #     else:
+        #         print("else")
+        #         client = KafkaClient(hosts=self.hosts)
+        #     topic = client.topics[self.topic]
+        #     consumer = topic.get_simple_consumer(fetch_message_max_bytes=self.fetch_message_max_bytes,
+        #     num_consumer_fetchers=self.num_consumer_fetchers, auto_commit_enable=self.auto_commit_enable, auto_commit_interval_ms=self.auto_commit_interval_ms, queued_max_messages=self.queued_max_messages, 
+        #     fetch_min_bytes=self.fetch_min_bytes, fetch_error_backoff_ms=self.fetch_error_backoff_ms, fetch_wait_max_ms=self.fetch_wait_max_ms, offsets_channel_backoff_ms=self.offsets_channel_backoff_ms, 
+        #     offsets_commit_max_retries=self.offsets_commit_max_retries, auto_offset_reset=self.auto_offset_reset, consumer_timeout_ms=self.consumer_timeout_ms, auto_start=self.auto_start,
+        #     reset_offset_on_start=self.reset_offset_on_start, compacted_topic=self.compacted_topic, generation_id=self.generation_id, consumer_id=self.consumer_id, reset_offset_on_fetch=self.reset_offset_on_fetch )
+        #     for message in consumer:
+        #         timen=datetime.now()
+        #         if message is not None:
+        #             temp=self.myparser(message.value)#,parsetype)
+        #             # print(temp)
+        #             temp["Date"]= datetime.strptime(temp["Date"], '%d/%b/%Y:%H:%M:%S')#just for our testing will be removed later
+        #             temp["recDate"]=datetime.now() #also that perhaps ?
+        #             data.append(temp)
+        #             self.size+=1
+        #             w.observe(data=list(collections.deque(data)),size=self.size)
+        
+        # elif kafkaext=='confluent':
+
+                    # self.size+=1
+                    
                 # print('Received message: {}'.format(msg.value().decode('utf-8')))
         # consumer = topic.get_simple_consumer()
         # if self.consumer_group is not None:
