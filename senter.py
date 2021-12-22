@@ -20,7 +20,7 @@ client = KafkaClient(hosts="127.0.0.1:9093")
 # topic = client.topics['my.test']
 # setup once
 # client = KafkaClient(hosts="127.0.0.1:9093", use_greenlets=True)
-topic = client.topics['newtopic']
+topic = client.topics['newtopicpart5']
 producer = topic.get_sync_producer()
 
 test_schema = '''

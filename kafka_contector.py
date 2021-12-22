@@ -69,6 +69,10 @@ class kafka_contector(threading.Thread):
         # self.schema=schema
         self.parser_extra = parser_extra
         self.queue_length = queue_length
+        if self.queue_length is None:
+            self.data=Queue(maxsize=5000)
+        else:
+            self.data=Queue(maxsize=self.queue_length)
         self._quit = threading.Event()
         # self._quit = threading.Event()
         #pykfka
@@ -182,9 +186,9 @@ class kafka_contector(threading.Thread):
             # print(temp)
             temp["Date"]= datetime.strptime(temp["Date"], '%d/%b/%Y:%H:%M:%S')#just for our testing will be removed later
             temp["recDate"]=datetime.now() #also that perhaps ?
-            if self.data.full:
+            if self.data.full():
                 self.data.get()
-            self.data.append(temp)
+            self.data.put(temp)
             self.size+=1
 
     def run(self):
@@ -192,10 +196,6 @@ class kafka_contector(threading.Thread):
         # kafkaext='pykfka'
         w = Watcher()
         #queue_length is the maximum messages that will be kept in memory
-        if self.queue_length is None:
-            self.data=Queue(maxsize=5000)
-        else:
-            self.data=Queue(maxsize=self.queue_length)
         if self.cluster_size==1:
             if self.hosts is None:
                 c = Consumer({
@@ -219,15 +219,11 @@ class kafka_contector(threading.Thread):
                     print("Consumer error: {}".format(msg.error()))
                     continue
                 temp=self.myparser(format(msg.value().decode('utf-8')))#,parsetype)
-                print(temp)
                 temp["Date"]= datetime.strptime(temp["Date"], '%d/%b/%Y:%H:%M:%S')#just for our testing will be removed later
                 temp["recDate"]=datetime.now() #also that perhaps ?
-                print("before if")
                 if self.data.full():
                     self.data.get()
-                print("before put")
                 self.data.put(temp)
-                print("after put")
                 self.size+=1
                 w.observe(data=list(self.data.queue),size=self.size)
         else:
