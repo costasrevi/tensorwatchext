@@ -87,6 +87,7 @@ class kafka_connector(threading.Thread):
         #     except: 
         #         print("ParseFromString not installed")
         #         return
+        # time.sleep(0.2)
         self.start()
 
     #trying to add deferent libraries for deserializing the kafka messages

@@ -126,9 +126,13 @@ class LinePlot(BaseMplPlot):
         #   x [, y [,low, [, high [,annotation [, text [, color]]]]]]
         #   y
         #   x [, y [, z, [,low, [, high [annotation [, text [, color]]]]]
+        if xdata:
+            xdatasize=xdata[-1]
+        else:
+            xdatasize = 0
         for val in vals:
             # set defaults
-            x, y, z =  len(xdata), None, None
+            x, y, z =  xdatasize, None, None
             low, high = None, None
             ann, txt, clr = None, None, None
 
@@ -144,23 +148,24 @@ class LinePlot(BaseMplPlot):
                     val.low, val.high, val.annotation, val.text, val.color
             else:
                 y = val
-
             if ann is not None:
                 ann = str(ann)
             if txt is not None:
                 txt = str(txt)
             if stream_vis.window_size is not None:
                 if stream_vis.window_size == len(xdata):
-                    xdata.pop()
-                    ydata.pop()
-                    zdata.pop()
-            xdata.append(x)
+                    xdata.pop(0)
+                    ydata.pop(0)
+                    if zdata:
+                        zdata.pop(0)
+            xdatasize+=1
+            xdata.append(xdatasize)
             ydata.append(y)
             zdata.append(z)
-            if stream_vis.window_width is not None:
+            if stream_vis.window_width is not None and stream_vis.window_width<stream_vis.window_size:
                 # if x > stream_vis.window_width:
                     # ax.set_xlim([0, x])
-                if len(xdata) > stream_vis.window_width:
+                if xdatasize > stream_vis.window_width:
                     stream_vis.ax.set_xlim([x-stream_vis.window_width, x])
             if low is not None:
                 lows.append(low)
