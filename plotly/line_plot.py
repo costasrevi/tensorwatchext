@@ -68,6 +68,7 @@ class LinePlot(BasePlotlyPlot):
         draw_marker_text = stream_vis.stream_vis_args.get('draw_marker_text',False)
         hoverinfo = stream_vis.stream_vis_args.get('hoverinfo',None)
         window_width  = stream_vis.stream_vis_args.get('window_width',None)
+        window_size = stream_vis.stream_vis_args.get('window_size',None)
         marker = stream_vis.stream_vis_args.get('marker',{})
         line = stream_vis.stream_vis_args.get('line',{})
         utils.set_default(line, 'color', stream_vis.color or BasePlotlyPlot.get_pallet_color(stream_vis.index))

@@ -40,7 +40,7 @@ ioloop = get_ioloop()
 #     consumer.stop()
 #     consumer.start()
 
-class pykafka_contector(threading.Thread):
+class pykafka_connector(threading.Thread):
                 
     def quit(self):
         self._quit.set()        
@@ -51,11 +51,12 @@ class pykafka_contector(threading.Thread):
     fetch_message_max_bytes:int=1024 * 1024, num_consumer_fetchers:int=1, auto_commit_enable:bool=False,
     auto_commit_interval_ms:int=60 * 1000, queued_max_messages:int=2000, fetch_min_bytes:int=1,  fetch_error_backoff_ms:int=500, fetch_wait_max_ms:int=100,
     offsets_channel_backoff_ms:int=1000, offsets_commit_max_retries:int=5, auto_offset_reset:OffsetType=OffsetType.EARLIEST, consumer_timeout_ms:int=-1, auto_start:bool=True,
-    reset_offset_on_start:bool=False, compacted_topic:bool=False, generation_id:int=-1, consumer_id:bool=b'',  reset_offset_on_fetch:bool=True):#deserializer:function=None,
+    reset_offset_on_start:bool=False, compacted_topic:bool=False, generation_id:int=-1, consumer_id:bool=b'',  reset_offset_on_fetch:bool=True, decode:str="utf-8"):#deserializer:function=None,
         super().__init__()
         self.hosts = hosts
         self.topic = topic
         self.cluster_size=cluster_size
+        self.decode = decode
         self.size=0
         self.kafka_thread = None
         self.parsetype = parsetype
@@ -124,14 +125,11 @@ class pykafka_contector(threading.Thread):
             # return TBinaryProtocol.TBinaryProtocol(transportIn)
             # return TDeserializer.deserialize(self.parser_extra, message)
         elif self.parsetype.lower()=='xml' :
-            xml = bytes(bytearray(message, encoding = 'utf-8'))
+            xml = bytes(bytearray(message, encoding = self.decode))
             return ET.parse(xml)
         elif self.parsetype.lower()=='protobuf' :
             # s = str(message, 'ascii')
-            if self.parser_extra == "utf-8" or self.parser_extra is None:
-                s = str(message, 'utf-8')
-            elif self.parser_extra == "ascii":
-                s = str(message, 'ascii')
+            s = str(message, self.decode)
             # return ParseFromString(s)
             # import base64
             # s = base64.b64decode(data).decode('utf-8')
@@ -181,7 +179,7 @@ class pykafka_contector(threading.Thread):
         #queue_length is the maximum messages that will be kept in memory
         if self.cluster_size==1:
             if self.hosts is None:
-                client = KafkaClient(hosts="127.0.0.1:9093")
+                client = KafkaClient(hosts="127.0.0.1:9092")
             else:
                 print("else")
                 client = KafkaClient(hosts=self.hosts)

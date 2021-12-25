@@ -9,7 +9,7 @@ from ..lv_types import PointData
 
 class LinePlot(BaseMplPlot):
     def init_stream_plot(self, stream_vis, 
-            xtitle='', ytitle='', ztitle='', colormap=None, color=None, xrange=None, yrange=None, linewidth=None, window_width=None, **stream_vis_args):
+            xtitle='', ytitle='', ztitle='', colormap=None, color=None, xrange=None, yrange=None, linewidth=None, window_width=None, window_size=None, **stream_vis_args):# 
         stream_vis.xylabel_refs = [] # annotation references                                        #window_width  added fro cutting old values
 
         import matplotlib
@@ -149,7 +149,11 @@ class LinePlot(BaseMplPlot):
                 ann = str(ann)
             if txt is not None:
                 txt = str(txt)
-
+            if stream_vis.window_size is not None:
+                if stream_vis.window_size == len(xdata):
+                    xdata.pop()
+                    ydata.pop()
+                    zdata.pop()
             xdata.append(x)
             ydata.append(y)
             zdata.append(z)

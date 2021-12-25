@@ -37,13 +37,13 @@ class VisBase(Stream, metaclass=ABCMeta):
         self.q_last_processed = 0
 
     def subscribe(self, stream:Stream, title=None, clear_after_end=False, clear_after_each=False,
-            show:bool=False, history_len=1, dim_history=True, opacity=None, window_width=None, **stream_vis_args):
+            show:bool=False, history_len=1, dim_history=True, opacity=None, window_width=None, window_size=None, **stream_vis_args):
         # in this ovedrride we don't call base class method
         with self.lock:
             self.layout_dirty = True
 
             stream_vis = StreamVisInfo(stream, title, clear_after_end,
-                clear_after_each, history_len, dim_history, opacity, window_width,
+                clear_after_each, history_len, dim_history, opacity, window_width, window_size,
                 len(self._stream_vises), stream_vis_args, 0)
             stream_vis._clear_pending = False
             stream_vis._pending_items = queue.Queue()

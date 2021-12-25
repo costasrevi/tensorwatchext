@@ -6,8 +6,8 @@ from typing import Iterable, Sequence, Union
 from .watcher_client import WatcherClient
 from .watcher import Watcher
 from .watcher_base import WatcherBase
-from .kafka_contector import kafka_contector
-from .pykafka_contector import pykafka_contector
+from .kafka_connector import kafka_connector
+from .pykafka_connector import pykafka_connector
 
 from .text_vis import TextVis
 from .plotly.embeddings_plot import EmbeddingsPlot

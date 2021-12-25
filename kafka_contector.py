@@ -1,5 +1,13 @@
+from pykafka import KafkaClient
+from pykafka.common import OffsetType
+
 from confluent_kafka import Consumer
 from confluent_kafka.admin import AdminClient
+
+import collections
+from datetime import datetime
+import time
+
 from .watcher import Watcher
 
 import threading
@@ -8,11 +16,9 @@ from queue import Queue
 #imported parsers here that need no install
 import json
 import pickle
+
 import xml.etree.ElementTree as ET
 # from lxml import etree
-from datetime import datetime
-import time
-from typing import Dict
 
 def get_ioloop():
     import IPython, zmq
@@ -24,13 +30,34 @@ def get_ioloop():
 #The IOloop is shared
 ioloop = get_ioloop()
 
+# def run_progress(hosts:str=None, topic:str=None, parsetype:str=None, parser_extra:str=None, queue_length:int=None):
+#         thread = kafka_contector(hosts,topic,parsetype,parser_extra,queue_length)
+#         print("test")
+#         return
+#         # return thread
+
+# from pykafka.exceptions import SocketDisconnectedError, LeaderNotAvailable
+# # this illustrates consumer error catching;
+# consumer = topic.get_simple_consumer()
+# try:
+#     consumer.consume()
+# except (SocketDisconnectedError) as e:
+#     consumer = topic.get_simple_consumer()
+#     # use either the above method or the following:
+#     consumer.stop()
+#     consumer.start()
+
 class kafka_contector(threading.Thread):
                 
     def quit(self):
         self._quit.set()        
 
-    def __init__(self, hosts:str="localhost:9092", topic:str=None, parsetype:str=None, parser_extra:str=None, queue_length:int=None, cluster_size:int=1, 
-    consumer_config:Dict=None, poll:float=1.0 ,auto_offset:str="earliest", group_id:str="mygroup"):
+    def __init__(self, hosts:str=None, topic:str=None, parsetype:str=None, parser_extra:str=None, queue_length:int=None, cluster_size:int=1,
+    #pykfka settings        cluster:str=None, consumer_group:str=None, partitions:str=None,
+    fetch_message_max_bytes:int=1024 * 1024, num_consumer_fetchers:int=1, auto_commit_enable:bool=False,
+    auto_commit_interval_ms:int=60 * 1000, queued_max_messages:int=2000, fetch_min_bytes:int=1,  fetch_error_backoff_ms:int=500, fetch_wait_max_ms:int=100,
+    offsets_channel_backoff_ms:int=1000, offsets_commit_max_retries:int=5, auto_offset_reset:OffsetType=OffsetType.EARLIEST, consumer_timeout_ms:int=-1, auto_start:bool=True,
+    reset_offset_on_start:bool=False, compacted_topic:bool=False, generation_id:int=-1, consumer_id:bool=b'',  reset_offset_on_fetch:bool=True):#deserializer:function=None,
         super().__init__()
         self.hosts = hosts
         self.topic = topic
@@ -43,17 +70,22 @@ class kafka_contector(threading.Thread):
         self.parser_extra = parser_extra
         self.queue_length = queue_length
         if self.queue_length is None:
-            self.data=Queue(maxsize=50000)
+            self.data=Queue(maxsize=5000)
         else:
             self.data=Queue(maxsize=self.queue_length)
-        #confluent parameters
-        self.consumer_config = consumer_config
-        self.poll = poll
-        self.auto_offset = auto_offset
-        self.group_id = group_id
         self._quit = threading.Event()
         # self._quit = threading.Event()
         #pykfka
+        # self.cluster, self.consumer_group self.partitions= cluster, consumer_group, partitions
+        self.fetch_message_max_bytes, self.num_consumer_fetchers = \
+            fetch_message_max_bytes, num_consumer_fetchers
+        self.auto_commit_enable, self.auto_commit_interval_ms, self.queued_max_messages, self.fetch_min_bytes, self.fetch_error_backoff_ms = \
+            auto_commit_enable, auto_commit_interval_ms, queued_max_messages, fetch_min_bytes, fetch_error_backoff_ms
+        self.fetch_wait_max_ms, self.offsets_channel_backoff_ms, self.offsets_commit_max_retries, self.auto_offset_reset, self.consumer_timeout_ms = \
+            fetch_wait_max_ms, offsets_channel_backoff_ms, offsets_commit_max_retries, auto_offset_reset, consumer_timeout_ms
+        self.auto_start, self.reset_offset_on_start, self.compacted_topic, self.generation_id, self.consumer_id, self.reset_offset_on_fetch= \
+            auto_start, reset_offset_on_start, compacted_topic, generation_id, consumer_id, reset_offset_on_fetch
+        # self.deserializer = deserializer
         #to skip decoders from needed to be install 
         if self.parsetype is  None:
             pass
@@ -129,17 +161,22 @@ class kafka_contector(threading.Thread):
 
     def consumer(self):
         print("consumer start")
-        if self.consumer_config is None:
+        if self.hosts is None:
             c = Consumer({
-            'bootstrap.servers': self.hosts,
-            'group.id': self.group_id,
-            'auto.offset.reset': self.auto_offset
+            'bootstrap.servers': 'localhost:9093',
+            'group.id': 'mygroup',
+            'auto.offset.reset': 'earliest'
             })
         else:  
-            c = Consumer(self.consumer_config)
+            print("else")
+            c = Consumer({
+            'bootstrap.servers': self.hosts,
+            'group.id': 'mygroup',
+            'auto.offset.reset': 'earliest'
+            })
         c.subscribe([self.topic])
         while True:
-            msg = c.poll(self.poll)
+            msg = c.poll(0.4)
             if msg is None:
                 continue
             if msg.error():
@@ -160,17 +197,22 @@ class kafka_contector(threading.Thread):
         w = Watcher()
         #queue_length is the maximum messages that will be kept in memory
         if self.cluster_size==1:
-            if self.consumer_config is None:
+            if self.hosts is None:
                 c = Consumer({
-                'bootstrap.servers': self.hosts,
-                'group.id': self.group_id,
-                'auto.offset.reset': self.auto_offset
+                'bootstrap.servers': 'localhost:9093',
+                'group.id': 'mygroup',
+                'auto.offset.reset': 'earliest'
                 })
             else:  
-                c = Consumer(self.consumer_config)
+                print("else")
+                c = Consumer({
+                'bootstrap.servers': self.hosts,
+                'group.id': 'mygroup',
+                'auto.offset.reset': 'earliest'
+                })
             c.subscribe([self.topic])
             while True:
-                msg = c.poll(self.poll)
+                msg = c.poll(0.4)
                 if msg is None:
                     continue
                 if msg.error():
@@ -193,4 +235,41 @@ class kafka_contector(threading.Thread):
             while True:
                 w.observe(data=list(self.data.queue),size=self.size)
                 time.sleep(0.5)
+        # if kafkaext=='pykfka':
+        #     if self.hosts is None:
+        #         client = KafkaClient(hosts="127.0.0.1:9093")
+        #     else:
+        #         print("else")
+        #         client = KafkaClient(hosts=self.hosts)
+        #     topic = client.topics[self.topic]
+        #     consumer = topic.get_simple_consumer(fetch_message_max_bytes=self.fetch_message_max_bytes,
+        #     num_consumer_fetchers=self.num_consumer_fetchers, auto_commit_enable=self.auto_commit_enable, auto_commit_interval_ms=self.auto_commit_interval_ms, queued_max_messages=self.queued_max_messages, 
+        #     fetch_min_bytes=self.fetch_min_bytes, fetch_error_backoff_ms=self.fetch_error_backoff_ms, fetch_wait_max_ms=self.fetch_wait_max_ms, offsets_channel_backoff_ms=self.offsets_channel_backoff_ms, 
+        #     offsets_commit_max_retries=self.offsets_commit_max_retries, auto_offset_reset=self.auto_offset_reset, consumer_timeout_ms=self.consumer_timeout_ms, auto_start=self.auto_start,
+        #     reset_offset_on_start=self.reset_offset_on_start, compacted_topic=self.compacted_topic, generation_id=self.generation_id, consumer_id=self.consumer_id, reset_offset_on_fetch=self.reset_offset_on_fetch )
+        #     for message in consumer:
+        #         timen=datetime.now()
+        #         if message is not None:
+        #             temp=self.myparser(message.value)#,parsetype)
+        #             # print(temp)
+        #             temp["Date"]= datetime.strptime(temp["Date"], '%d/%b/%Y:%H:%M:%S')#just for our testing will be removed later
+        #             temp["recDate"]=datetime.now() #also that perhaps ?
+        #             data.append(temp)
+        #             self.size+=1
+        #             w.observe(data=list(collections.deque(data)),size=self.size)
+        
+        # elif kafkaext=='confluent':
 
+                    # self.size+=1
+                    
+                # print('Received message: {}'.format(msg.value().decode('utf-8')))
+        # consumer = topic.get_simple_consumer()
+        # if self.consumer_group is not None:
+        #     consumer = topic.get_simple_consumer(topic=self.topic, cluster=self.cluster, consumer_group=self.consumer_group, partitions=self.partitions, fetch_message_max_bytes=self.fetch_message_max_bytes,
+        #     num_consumer_fetchers=self.num_consumer_fetchers, auto_commit_enable=self.auto_commit_enable, auto_commit_interval_ms=self.auto_commit_interval_ms, queued_max_messages=self.queued_max_messages, 
+        #     fetch_min_bytes=self.fetch_min_bytes, fetch_error_backoff_ms=self.fetch_error_backoff_ms, fetch_wait_max_ms=self.fetch_wait_max_ms, offsets_channel_backoff_ms=self.offsets_channel_backoff_ms, 
+        #     offsets_commit_max_retries=self.offsets_commit_max_retries, auto_offset_reset=self.auto_offset_reset, consumer_timeout_ms=self.consumer_timeout_ms, auto_start=self.auto_start,
+        #     reset_offset_on_start=self.reset_offset_on_start, compacted_topic=self.compacted_topic, generation_id=self.generation_id, consumer_id=self.consumer_id, reset_offset_on_fetch=self.reset_offset_on_fetch )#deserializer=self.deserializer,
+        # else:
+        #deserializer=self.deserializer,  cluster=self.cluster, partitions=self.partitions,
+        # consumer = topic.get_simple_consumer(auto_offset_reset=OffsetType.LATEST,reset_offset_on_start=True,fetch_wait_max_ms =50)
