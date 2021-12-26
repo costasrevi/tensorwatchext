@@ -152,6 +152,7 @@ class LinePlot(BaseMplPlot):
                 ann = str(ann)
             if txt is not None:
                 txt = str(txt)
+            #added this for window size
             if stream_vis.window_size is not None:
                 if stream_vis.window_size == len(xdata):
                     xdata.pop(0)
@@ -162,11 +163,15 @@ class LinePlot(BaseMplPlot):
             xdata.append(xdatasize)
             ydata.append(y)
             zdata.append(z)
-            if stream_vis.window_width is not None and stream_vis.window_width<stream_vis.window_size:
-                # if x > stream_vis.window_width:
-                    # ax.set_xlim([0, x])
-                if xdatasize > stream_vis.window_width:
-                    stream_vis.ax.set_xlim([x-stream_vis.window_width, x])
+            #this for window width  try to ompimize it (make it smaller)
+            if stream_vis.window_size is not None:
+                if stream_vis.window_width is not None and stream_vis.window_width<stream_vis.window_size:
+                    if xdatasize > stream_vis.window_width:
+                        stream_vis.ax.set_xlim([x-stream_vis.window_width, x])
+            else:
+                if stream_vis.window_width is not None:
+                    if xdatasize > stream_vis.window_width:
+                        stream_vis.ax.set_xlim([x-stream_vis.window_width, x])
             if low is not None:
                 lows.append(low)
             if high is not None:

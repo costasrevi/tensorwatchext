@@ -1,3 +1,4 @@
+from xml.etree.ElementTree import XMLParser
 from pykafka import KafkaClient
 import re
 from datetime import datetime
@@ -10,6 +11,8 @@ import io
 from avro.io import DatumReader, DatumWriter, BinaryDecoder, BinaryEncoder
 
 import thrift
+
+from dicttoxml import dicttoxml
 
 import sys
 
@@ -56,7 +59,7 @@ test_schema = '''
 # }
 
 
-parse_type = "json"
+parse_type = "xml"
 
 
 # def get_pattern_files(root_path, pattern):
@@ -109,6 +112,11 @@ def main():
                         test = str2[1].split(' ')
                         temp["Request"] = (test[0])
                         temp["Extra"] = (test[1].split('/')[1])
+                        temp["Rand"] = random.randint(0,9)
+                        if parse_type == "xml":
+                            xml = dicttoxml(temp, custom_root='data', attr_type=False)
+                            # print(xml)
+                            producer.produce(xml)#data.encode('utf-8'))
                         if parse_type == "protobuf":
                             # converted_content=???
                             converted_string = converted_content.SerializeToString()

@@ -9,6 +9,7 @@ from queue import Queue
 import json
 import pickle
 import xml.etree.ElementTree as ET
+import xmltodict as xmltodict
 # from lxml import etree
 from datetime import datetime
 import time
@@ -101,6 +102,7 @@ class kafka_connector(threading.Thread):
             # return TBinaryProtocol.TBinaryProtocol(transportIn)
             # return TDeserializer.deserialize(self.parser_extra, message)
         elif self.parsetype.lower()=='xml' :
+            return xmltodict.parse(message,encoding=self.decode)
             xml = bytes(bytearray(message, encoding = self.decode))
             return ET.parse(xml)
         elif self.parsetype.lower()=='protobuf' :
@@ -146,8 +148,8 @@ class kafka_connector(threading.Thread):
                 continue
             temp=self.myparser(format(msg.value().decode(self.decode)))#,parsetype)
             # print(temp)
-            temp["Date"]= datetime.strptime(temp["Date"], '%d/%b/%Y:%H:%M:%S')#just for our testing will be removed later
-            temp["recDate"]=datetime.now() #also that perhaps ?
+            # temp["Date"]= datetime.strptime(temp["Date"], '%d/%b/%Y:%H:%M:%S')#just for our testing will be removed later
+            # temp["recDate"]=datetime.now() #also that perhaps ?
             if self.data.full():
                 self.data.get()
             self.data.put(temp)
@@ -176,8 +178,10 @@ class kafka_connector(threading.Thread):
                     print("Consumer error: {}".format(msg.error()))
                     continue
                 temp=self.myparser(format(msg.value().decode(self.decode)))#,parsetype)
-                temp["Date"]= datetime.strptime(temp["Date"], '%d/%b/%Y:%H:%M:%S')#just for our testing will be removed later
-                temp["recDate"]=datetime.now() #also that perhaps ?
+                # temp["Date"]= datetime.strptime(temp["Date"], '%d/%b/%Y:%H:%M:%S')#just for our testing will be removed later
+                # temp["recDate"]=datetime.now() #also that perhaps ?
+                print(temp)
+                print(type(temp))
                 if self.data.full():
                     self.data.get()
                 self.data.put(temp)

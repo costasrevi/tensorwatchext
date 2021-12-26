@@ -2,7 +2,7 @@
 # Licensed under the MIT license.
 
 from .base_plotly_plot import BasePlotlyPlot
-from ..lv_types import EventData
+from ..lv_types import EventData ,PointData
 from .. import utils
 
 class LinePlot(BasePlotlyPlot):
@@ -110,9 +110,13 @@ class LinePlot(BasePlotlyPlot):
         #   x [, y [,low, [, high [,annotation [, text [, color]]]]]]
         #   y
         #   x [, y [, z, [,low, [, high [annotation [, text [, color]]]]]
+        if xdata:
+            xdatasize=xdata[-1]
+        else:
+            xdatasize = 0
         for val in vals:
             # set defaults
-            x, y, z =  len(xdata), None, None
+            x, y, z =  xdatasize, None, None
             ann, txt, clr = None, None, None
 
             # if val turns out to be array-like, extract x,y
@@ -132,10 +136,26 @@ class LinePlot(BasePlotlyPlot):
                 ann = str(ann)
             if txt is not None:
                 txt = str(txt)
-
-            xdata.append(x)
+            #added this for window size
+            if stream_vis.window_size is not None:
+                if stream_vis.window_size == len(xdata):
+                    xdata.pop(0)
+                    ydata.pop(0)
+                    if zdata:
+                        zdata.pop(0)
+            xdatasize+=1
+            xdata.append(xdatasize)
             ydata.append(y)
             zdata.append(z)
+            #this for window width try to ompimize it (make it smaller)
+            if stream_vis.window_size is not None:
+                if stream_vis.window_width is not None and stream_vis.window_width<stream_vis.window_size:
+                    if xdatasize > stream_vis.window_width:
+                        stream_vis.ax.set_xlim([x-stream_vis.window_width, x])
+            else:
+                if stream_vis.window_width is not None:
+                    if xdatasize > stream_vis.window_width:
+                        stream_vis.ax.set_xlim([x-stream_vis.window_width, x])
             if low is not None:
                 lows.append(low)
             if high is not None:
