@@ -23,7 +23,7 @@ client = KafkaClient(hosts="127.0.0.1:9093")
 # topic = client.topics['my.test']
 # setup once
 # client = KafkaClient(hosts="127.0.0.1:9093", use_greenlets=True)
-topic = client.topics['newtopicpart5']
+topic = client.topics['newtopicpart7']
 producer = topic.get_sync_producer()
 
 test_schema = '''
@@ -59,9 +59,10 @@ test_schema = '''
 # }
 
 
-parse_type = "xml"
+parse_type = "protobuf"
 
-
+# try :
+import message_pb2
 # def get_pattern_files(root_path, pattern):
 #     all_files = []
 #     print("get_pattern_files")
@@ -96,6 +97,7 @@ def main():
     with topic.get_producer() as producer:#use_rdkafka=True
         print("get_producer")
         print(all_files)
+        totallines=0
         for input_file in all_files:
             print("input_file")
             with open(input_file, 'r', encoding='ISO-8859-1') as file_handle:
@@ -104,7 +106,7 @@ def main():
                 for line in file_handle:
                     # temp = []
                     try:
-                        temp = {"Date": "", "Request": "", "Extra": ""}
+                        temp = {"Date": "", "Request": "", "Extra": "","Rand":int}
                         time_str = re.search("\[.*\]", line)
                         time_str = time_str.group()[1:-1]
                         temp["Date"] = (time_str.split(' ')[0])
@@ -114,18 +116,29 @@ def main():
                         temp["Extra"] = (test[1].split('/')[1])
                         temp["Rand"] = random.randint(0,9)
                         if parse_type == "xml":
-                            xml = dicttoxml(temp, custom_root='data', attr_type=False)
+                            xml = dicttoxml(temp, attr_type=False)
                             # print(xml)
+                            totallines+=1
+                            if totallines%10000==0:
+                                print(totallines)
                             producer.produce(xml)#data.encode('utf-8'))
                         if parse_type == "protobuf":
-                            # converted_content=???
-                            converted_string = converted_content.SerializeToString()
-                            converted_bytes = converted_content.__bytes__() 
-                            converted_bytes = bytes(converted_content)
+                            # converted_content=temp
+                            message=message_pb2.Message()
+                            message.Date = temp["Date"] 
+                            message.Request = temp["Request"] 
+                            message.Extra = temp["Extra"] 
+                            message.Rand = temp["Rand"] 
+                            converted_string = message.SerializeToString()
+                            # converted_bytes = bytes(converted_string)
+                            print("test3")
+                            producer.produce(converted_string)
+                            print("test4")
                         if parse_type == "thrift":
                                 transportOut = TTransport.TMemoryBuffer()
                                 protocolOut = protocol_type(transportOut)
-                                asd1=write(protocolOut)
+                                Out=write(protocolOut)
+                                producer.produce(Out)
                         if parse_type == "avro":
                             schema = avro.schema.parse(test_schema)
                             writer = avro.io.DatumWriter(schema)

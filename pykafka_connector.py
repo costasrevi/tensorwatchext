@@ -8,7 +8,24 @@ from queue import Queue
 #imported parsers here that need no install
 import json
 import pickle
-import xml.etree.ElementTree as ET
+try:
+    import xmltodict as xmltodict   
+except:
+    pass
+try:
+    import thrift
+    from thrift.protocol import TBinaryProtocol
+    from thrift.transport import TTransport
+except: 
+    pass
+try:
+    import avro.schema
+    # import io
+    from avro.io import DatumReader
+    import io
+    from avro.io import BinaryDecoder
+except:
+    pass
 # from lxml import etree
 from datetime import datetime
 import time
@@ -51,7 +68,7 @@ class pykafka_connector(threading.Thread):
     fetch_message_max_bytes:int=1024 * 1024, num_consumer_fetchers:int=1, auto_commit_enable:bool=False,
     auto_commit_interval_ms:int=60 * 1000, queued_max_messages:int=2000, fetch_min_bytes:int=1,  fetch_error_backoff_ms:int=500, fetch_wait_max_ms:int=100,
     offsets_channel_backoff_ms:int=1000, offsets_commit_max_retries:int=5, auto_offset_reset:OffsetType=OffsetType.EARLIEST, consumer_timeout_ms:int=-1, auto_start:bool=True,
-    reset_offset_on_start:bool=False, compacted_topic:bool=False, generation_id:int=-1, consumer_id:bool=b'',  reset_offset_on_fetch:bool=True, decode:str="utf-8"):#deserializer:function=None,
+    reset_offset_on_start:bool=False, compacted_topic:bool=False, generation_id:int=-1, consumer_id:bool=b'',  reset_offset_on_fetch:bool=True, decode:str="utf-8", scema_path:str=None):#deserializer:function=None,
         super().__init__()
         self.hosts = hosts
         self.topic = topic
@@ -60,6 +77,7 @@ class pykafka_connector(threading.Thread):
         self.size=0
         self.kafka_thread = None
         self.parsetype = parsetype
+        self.scema_path = scema_path
         # self.schema=schema
         self.parser_extra = parser_extra
         self.queue_length = queue_length
@@ -81,37 +99,23 @@ class pykafka_connector(threading.Thread):
             auto_start, reset_offset_on_start, compacted_topic, generation_id, consumer_id, reset_offset_on_fetch
         # self.deserializer = deserializer
         #to skip decoders from needed to be install 
-        if self.parsetype is  None:
-            pass
-        elif self.parsetype.lower()=='thrift' :   
+        if self.parsetype.lower()=='avro':
             try:
-                import thrift
-                from thrift.protocol import TBinaryProtocol
-                from thrift.transport import TTransport
-            except: 
-                print("thrift not installed")
-                return
-        elif self.parsetype.lower()=='avro' :
-            try:
-                import avro.schema
-                # import io
-                from avro.io import DatumReader#,
                 schema = avro.schema.parse(parser_extra)
                 self.reader = DatumReader(schema)
-            # except: 
-            #     print("avro not installed")
-            #     return
-            # try:
-            #     self.reader = DatumReader(json.loads(parser_extra))
             except: 
-                print("avro second error not installed"+ json.loads(parser_extra))
+                print("avro schema error or avro not installed"+ json.loads(parser_extra))
                 return
-        # elif self.parsetype.lower()=='protobuf' :
-        #     try:
-        #         import ParseFromString
-        #     except: 
-        #         print("ParseFromString not installed")
-        #         return
+        elif self.parsetype.lower()=='protobuf' :
+            try:
+                import sys
+                import importlib
+                sys.path.append(scema_path)#scema_path change them
+                mymodule = importlib.import_module(parser_extra)
+                method_to_call = getattr(mymodule, probuf_message)
+                self.mymodule = method_to_call()
+            except: 
+                print("Error importing protobuf")
         self.start()
 
     #trying to add deferent libraries for deserializing the kafka messages
@@ -125,29 +129,22 @@ class pykafka_connector(threading.Thread):
             # return TBinaryProtocol.TBinaryProtocol(transportIn)
             # return TDeserializer.deserialize(self.parser_extra, message)
         elif self.parsetype.lower()=='xml' :
-            xml = bytes(bytearray(message, encoding = self.decode))
-            return ET.parse(xml)
+            try:
+                xml = xmltodict.parse(message)
+                return xml
+            except Exception as ex: # pylint: disable=broad-except
+                print('Exception occured : ' + message)
         elif self.parsetype.lower()=='protobuf' :
-            # s = str(message, 'ascii')
             s = str(message, self.decode)
-            # return ParseFromString(s)
-            # import base64
-            # s = base64.b64decode(data).decode('utf-8')
-            # message.ParseFromString(s)
-            # transportIn = TTransport.TMemoryBuffer(message)
-            # return TBinaryProtocol.TBinaryProtocol(transportIn)
+            return self.mymodule.ParseFromString(s)
         elif self.parsetype.lower()=='avro' :
-            import io
-            from avro.io import BinaryDecoder
-            message_bytes = io.BytesIO(message)
-            decoder = BinaryDecoder(message_bytes)
-            event_dict = self.reader.read(decoder)
-            # print(event_dict)
-            # bytes_reader = io.BytesIO(raw_bytes)
-            # decoder = avro.io.BinaryDecoder(bytes_reader)
-            # reader = avro.io.DatumReader(schema)
-            # decoded_data = reader.read(decoder)
-            return event_dict
+            try:
+                message_bytes = io.BytesIO(message)
+                decoder = BinaryDecoder(message_bytes)
+                event_dict = self.reader.read(decoder)
+                return event_dict
+            except:
+                print("Avro error ,perhpas avro not installed")
         return 'error:unkown type of parsing'
 
     def consumer(self):
@@ -224,4 +221,4 @@ class pykafka_connector(threading.Thread):
         #     reset_offset_on_start=self.reset_offset_on_start, compacted_topic=self.compacted_topic, generation_id=self.generation_id, consumer_id=self.consumer_id, reset_offset_on_fetch=self.reset_offset_on_fetch )#deserializer=self.deserializer,
         # else:
         #deserializer=self.deserializer,  cluster=self.cluster, partitions=self.partitions,
-        # consumer = topic.get_simple_consumer(auto_offset_reset=OffsetType.LATEST,reset_offset_on_start=True,fetch_wait_max_ms =50)
+        # consumer = topic.get_simple_consumer(auto_offset_reset=OffsetType.LATEST,reset_offset_on_start=True,fetch_wait_max_ms 
