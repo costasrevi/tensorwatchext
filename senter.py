@@ -39,25 +39,6 @@ test_schema = '''
  ]
 }
 '''
-# message DowJonesIndex {
-#     int64 quarter = 1;
-#     string stock=2;
-#     string date=3;
-#     string open=4;
-#     string high=5;
-#     string low=6;
-#     string close=7;
-#     int64 volume=8;
-#     string percent_change_price=9;
-#     string percent_change_volume_over_last_wk=10;
-#     string previous_weeks_volume=11;
-#     string next_weeks_open=12;
-#     string next_weeks_close=13;
-#     double percent_change_next_weeks_price=14;
-#     int64 days_to_next_dividend=15;
-#     double percent_return_next_dividend=16;
-# }
-
 
 parse_type = "protobuf"
 
@@ -131,14 +112,12 @@ def main():
                             message.Rand = temp["Rand"] 
                             converted_string = message.SerializeToString()
                             # converted_bytes = bytes(converted_string)
-                            print("test3")
                             producer.produce(converted_string)
-                            print("test4")
-                        if parse_type == "thrift":
-                                transportOut = TTransport.TMemoryBuffer()
-                                protocolOut = protocol_type(transportOut)
-                                Out=write(protocolOut)
-                                producer.produce(Out)
+                        # if parse_type == "thrift":
+                        #         transportOut = TTransport.TMemoryBuffer()
+                        #         protocolOut = protocol_type(transportOut)
+                        #         Out=write(protocolOut)
+                        #         producer.produce(Out)
                         if parse_type == "avro":
                             schema = avro.schema.parse(test_schema)
                             writer = avro.io.DatumWriter(schema)

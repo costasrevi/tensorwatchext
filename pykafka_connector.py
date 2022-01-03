@@ -29,13 +29,14 @@ except:
 # from lxml import etree
 from datetime import datetime
 import time
+import random
 
 def get_ioloop():
     import IPython, zmq
     ipython = IPython.get_ipython()
     if ipython and hasattr(ipython, 'kernel'):
         return zmq.eventloop.ioloop.IOLoop.instance()
-
+from probables import (CountMinSketch)
 
 #The IOloop is shared
 ioloop = get_ioloop()
@@ -64,11 +65,12 @@ class pykafka_connector(threading.Thread):
 
     def __init__(self, hosts:str=None, topic:str=None, parsetype:str=None, parser_extra:str=None, queue_length:int=None, cluster_size:int=1,
     #pykfka settings        
-    cluster:str=None, consumer_group:str="mygroup", partitions:str=None,
+    cluster:str=None, consumer_group:str="mygroup", partitions:str=None, probuf_message:str=None,
     fetch_message_max_bytes:int=1024 * 1024, num_consumer_fetchers:int=1, auto_commit_enable:bool=False,
     auto_commit_interval_ms:int=60 * 1000, queued_max_messages:int=2000, fetch_min_bytes:int=1,  fetch_error_backoff_ms:int=500, fetch_wait_max_ms:int=100,
     offsets_channel_backoff_ms:int=1000, offsets_commit_max_retries:int=5, auto_offset_reset:OffsetType=OffsetType.EARLIEST, consumer_timeout_ms:int=-1, auto_start:bool=True,
-    reset_offset_on_start:bool=False, compacted_topic:bool=False, generation_id:int=-1, consumer_id:bool=b'',  reset_offset_on_fetch:bool=True, decode:str="utf-8", scema_path:str=None):#deserializer:function=None,
+    reset_offset_on_start:bool=False, compacted_topic:bool=False, generation_id:int=-1, consumer_id:bool=b'',  reset_offset_on_fetch:bool=True, decode:str="utf-8", 
+    scema_path:str=None, random_sampling:int=None, countmin_width:int=None, countmin_depth:int=None):#deserializer:function=None,
         super().__init__()
         self.hosts = hosts
         self.topic = topic
@@ -78,6 +80,7 @@ class pykafka_connector(threading.Thread):
         self.kafka_thread = None
         self.parsetype = parsetype
         self.scema_path = scema_path
+        self.random_sampling = random_sampling
         # self.schema=schema
         self.parser_extra = parser_extra
         self.queue_length = queue_length
@@ -98,6 +101,11 @@ class pykafka_connector(threading.Thread):
         self.auto_start, self.reset_offset_on_start, self.compacted_topic, self.generation_id, self.consumer_id, self.reset_offset_on_fetch= \
             auto_start, reset_offset_on_start, compacted_topic, generation_id, consumer_id, reset_offset_on_fetch
         # self.deserializer = deserializer
+        #memory optimazation limiting the number of stored data
+        self.cms={}
+        self.countmin_depth = countmin_depth
+        self.countmin_width = countmin_width
+        self.random_sampling = random_sampling
         #to skip decoders from needed to be install 
         if self.parsetype.lower()=='avro':
             try:
@@ -162,12 +170,36 @@ class pykafka_connector(threading.Thread):
         reset_offset_on_start=self.reset_offset_on_start, compacted_topic=self.compacted_topic, generation_id=self.generation_id, consumer_id=self.consumer_id, reset_offset_on_fetch=self.reset_offset_on_fetch )
         for message in consumer:
             if message is not None:
-                temp=self.myparser(message.value)#,parsetype)
-                # print(temp)
-                temp["Date"]= datetime.strptime(temp["Date"], '%d/%b/%Y:%H:%M:%S')#just for our testing will be removed later
-                temp["recDate"]=datetime.now() #also that perhaps ?
-                self.data.put(temp)
-                self.size+=1
+                if self.random_sampling is not None and self.random_sampling>random.randint(0,100):
+                    pass
+                else:
+                    temp=self.myparser(message.value)#,parsetype)
+                    # print(temp)
+                    temp["Date"]= datetime.strptime(temp["Date"], '%d/%b/%Y:%H:%M:%S')#just for our testing will be removed later
+                    temp["recDate"]=datetime.now() #also that perhaps ?
+                    self.data.put(temp)
+                    self.size+=1
+                    try:
+                        if type(temp) is dict and self.countmin_depth is not None and self.countmin_width is not None:
+                            # print("it is dict")
+                            for key in temp:
+                                # print(key)
+                                if key not in self.cms.keys():
+                                    try:
+                                        self.cms[key] = CountMinSketch(width=self.countmin_width, depth=self.countmin_depth)
+                                    except:
+                                        print("self.cms[key] is None")
+                                try:
+                                    self.cms[key].add(str(temp[key]))
+                                except:
+                                    print("self.cms[key].add(str(temp[key]))")
+                        elif type(temp) is list and self.countmin_depth is not None and self.countmin_width is not None:
+                            for key in temp:
+                                if self.cms[key] is None:
+                                    self.cms[str(key)] = CountMinSketch(width=self.countmin_width, depth=self.countmin_depth)
+                                self.cms[str(key)].add(str(temp[str(key)]))                        
+                    except:
+                        print("cms assigment error")
 
     def run(self):
         # kafkaext='confluent'
@@ -188,13 +220,37 @@ class pykafka_connector(threading.Thread):
             reset_offset_on_start=self.reset_offset_on_start, compacted_topic=self.compacted_topic, generation_id=self.generation_id, consumer_id=self.consumer_id, reset_offset_on_fetch=self.reset_offset_on_fetch )
             for message in consumer:
                 if message is not None:
-                    temp=self.myparser(message.value)#,parsetype)
-                    # print(temp)
-                    temp["Date"]= datetime.strptime(temp["Date"], '%d/%b/%Y:%H:%M:%S')#just for our testing will be removed later
-                    temp["recDate"]=datetime.now() #also that perhaps ?
-                    self.data.put(temp)
-                    self.size+=1
-                    w.observe(data=list(self.data.queue),size=self.size)
+                    if self.random_sampling is not None and self.random_sampling>random.randint(0,100):
+                        pass
+                    else:
+                        temp=self.myparser(message.value)#,parsetype)
+                        # print(temp)
+                        temp["Date"]= datetime.strptime(temp["Date"], '%d/%b/%Y:%H:%M:%S')#just for our testing will be removed later
+                        temp["recDate"]=datetime.now() #also that perhaps ?
+                        self.data.put(temp)
+                        self.size+=1
+                        try:
+                            if type(temp) is dict and self.countmin_depth is not None and self.countmin_width is not None:
+                                # print("it is dict")
+                                for key in temp:
+                                    # print(key)
+                                    if key not in self.cms.keys():
+                                        try:
+                                            self.cms[key] = CountMinSketch(width=self.countmin_width, depth=self.countmin_depth)
+                                        except:
+                                            print("self.cms[key] is None")
+                                    try:
+                                        self.cms[key].add(str(temp[key]))
+                                    except:
+                                        print("self.cms[key].add(str(temp[key]))")
+                            elif type(temp) is list and self.countmin_depth is not None and self.countmin_width is not None:
+                                for key in temp:
+                                    if self.cms[key] is None:
+                                        self.cms[str(key)] = CountMinSketch(width=self.countmin_width, depth=self.countmin_depth)
+                                    self.cms[str(key)].add(str(temp[str(key)]))                        
+                        except:
+                            print("cms assigment error")
+                            w.observe(data=list(self.data.queue), size=self.size, cms=self.cms)
         else:
             thread=[] 
             for x in range(self.cluster_size):
@@ -202,7 +258,7 @@ class pykafka_connector(threading.Thread):
                 thread[x].daemon = True
                 thread[x].start()
             while True:
-                w.observe(data=list(self.data.queue),size=self.size)
+                w.observe(data=list(self.data.queue), size=self.size, cms=self.cms)
                 time.sleep(0.5)
 
 
