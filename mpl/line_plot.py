@@ -6,10 +6,12 @@ from .. import image_utils
 from .. import utils
 import numpy as np
 from ..lv_types import PointData
+from datetime import datetime
+
 
 class LinePlot(BaseMplPlot):
     def init_stream_plot(self, stream_vis, 
-            xtitle='', ytitle='', ztitle='', colormap=None, color=None, xrange=None, yrange=None, linewidth=None, window_width=None, window_size=None, **stream_vis_args):# 
+            xtitle='', ytitle='', ztitle='', colormap=None, color=None, xrange=None, yrange=None, linewidth=None, window_width=None, window_size=None, useOffset=None, **stream_vis_args):# 
         stream_vis.xylabel_refs = [] # annotation references                                        #window_width  added fro cutting old values
 
         import matplotlib
@@ -160,18 +162,24 @@ class LinePlot(BaseMplPlot):
                     if zdata:
                         zdata.pop(0)
             xdatasize+=1
-            xdata.append(xdatasize)
+            if stream_vis.Date:
+                xdata.append(int(datetime.now().strftime('%H%M%S')))#%Y-%m-%d  
+            else:
+                xdata.append(xdatasize)
             ydata.append(y)
             zdata.append(z)
             #this for window width  try to ompimize it (make it smaller)
-            if stream_vis.window_size is not None:
-                if stream_vis.window_width is not None and stream_vis.window_width<stream_vis.window_size:
-                    if xdatasize > stream_vis.window_width:
-                        stream_vis.ax.set_xlim([x-stream_vis.window_width, x])
-            else:
-                if stream_vis.window_width is not None:
-                    if xdatasize > stream_vis.window_width:
-                        stream_vis.ax.set_xlim([x-stream_vis.window_width, x])
+            if stream_vis.window_width is not None:
+                if len(xdata) > stream_vis.window_width:
+                    stream_vis.ax.set_xlim([xdata[-1]-stream_vis.window_width, x])            
+            # if stream_vis.window_size is not None:
+            #     if stream_vis.window_width is not None and stream_vis.window_width<stream_vis.window_size:
+            #         if len(xdata) > stream_vis.window_width:
+            #             stream_vis.ax.set_xlim([xdata[-1]-stream_vis.window_width, x])
+            # else:
+            #     if stream_vis.window_width is not None:
+            #         if len(xdata) > stream_vis.window_width:
+            #             stream_vis.ax.set_xlim([xdata[-1]-stream_vis.window_width, x])
             if low is not None:
                 lows.append(low)
             if high is not None:
@@ -200,6 +208,10 @@ class LinePlot(BaseMplPlot):
 
         stream_vis.ax.relim()
         stream_vis.ax.autoscale_view(True,True,True)
+        if stream_vis.Date:
+            stream_vis.ax.ticklabel_format(useOffset=True)
+        else:
+            stream_vis.ax.ticklabel_format(useOffset=stream_vis.useOffset)# testing to disable scientific notation
 
         return False # dirty
 

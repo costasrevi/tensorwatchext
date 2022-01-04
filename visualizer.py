@@ -13,7 +13,8 @@ class Visualizer:
     """
     def __init__(self, stream:Stream, vis_type:str=None, host:'Visualizer'=None,
             cell:'Visualizer'=None, title:str=None,
-            clear_after_end=False, clear_after_each=False, history_len=1, dim_history=True, opacity=None, window_width=None, window_size=None,#window_width  added fro cutting old values
+            clear_after_end=False, clear_after_each=False, history_len=1, dim_history=True, opacity=None, 
+            window_width=None, window_size=None, Date=None, useOffset=None,#window_width  added fro cutting old values
 
             rows=2, cols=5, img_width=None, img_height=None, img_channels=None,
             colormap=None, viz_img_scale=None,
@@ -42,7 +43,8 @@ class Visualizer:
                                    **vis_args)
 
         self._host_base.subscribe(stream, show=False, clear_after_end=clear_after_end, clear_after_each=clear_after_each,
-            history_len=history_len, dim_history=dim_history, opacity=opacity, window_width=window_width , window_size=window_size,#window_width  added fro cutting old values
+            history_len=history_len, dim_history=dim_history, opacity=opacity, 
+            window_width=window_width , window_size=window_size, Date=Date, useOffset=None,#window_width  added fro cutting old values
             only_summary=only_summary if vis_type is None or 'summary' != vis_type else True,
             separate_yaxis=separate_yaxis, xtitle=xtitle, ytitle=ytitle, ztitle=ztitle, color=color,
             xrange=xrange, yrange=yrange, zrange=zrange,

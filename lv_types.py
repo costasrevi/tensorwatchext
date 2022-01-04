@@ -51,7 +51,8 @@ class VisArgs:
     """
     def __init__(self, vis_type:str=None, host:'Visualizer'=None, 
             cell:'Visualizer'=None, title:str=None, 
-            clear_after_end=False, clear_after_each=False, history_len=1, dim_history=True, opacity=None, window_width=None, window_size=None,
+            clear_after_end=False, clear_after_each=False, history_len=1, dim_history=True, opacity=None, 
+            window_width=None, Date=None, window_size=None,useOffset=None, #added more variables here
 
             rows=2, cols=5, img_width=None, img_height=None, img_channels=None,
             colormap=None, viz_img_scale=None,
@@ -74,8 +75,8 @@ class VisArgs:
         self.cell, self.title = cell, title
         self.clear_after_end, self.clear_after_each, self.history_len, self.dim_history, self.opacity = \
             clear_after_end, clear_after_each, history_len, dim_history, opacity
-        self.window_width=window_width
-        self.window_size=window_size
+        self.window_width, self.window_size= window_width, window_size
+        self.Date, self.useOffset= Date, useOffset
         self.rows, self.cols, self.img_width, self.img_height, self.img_channels = \
             rows, cols, img_width, img_height, img_channels
         self.colormap, self.viz_img_scale = colormap, viz_img_scale
@@ -123,11 +124,12 @@ class CliSrvReqTypes:
 
 class StreamVisInfo:
     def __init__(self, stream, title, clear_after_end, 
-                clear_after_each, history_len, dim_history, opacity, window_width, window_size,
+                clear_after_each, history_len, dim_history, opacity,
+                window_width, window_size, Date, useOffset,
                 index, stream_vis_args, last_update):
         self.stream = stream
         self.title, self.opacity = title, opacity
-        self.window_width, self.window_size = window_width, window_size
+        self.window_width, self.window_size, self.Date, self.useOffset = window_width, window_size, Date, useOffset
         self.clear_after_end, self.clear_after_each = clear_after_end, clear_after_each
         self.history_len, self.dim_history = history_len, dim_history
         self.index, self.stream_vis_args, self.last_update = index, stream_vis_args, last_update

@@ -4,7 +4,7 @@
 from .base_plotly_plot import BasePlotlyPlot
 from ..lv_types import EventData ,PointData
 from .. import utils
-
+from datetime import datetime
 class LinePlot(BasePlotlyPlot):
     def _setup_layout(self, stream_vis):
         # handle multiple y axis
@@ -144,18 +144,16 @@ class LinePlot(BasePlotlyPlot):
                     if zdata:
                         zdata.pop(0)
             xdatasize+=1
-            xdata.append(xdatasize)
+            if stream_vis.Date:
+                xdata.append(int(datetime.now().strftime('%H%M%S')))#%Y-%m-%d  
+            else:
+                xdata.append(xdatasize)
             ydata.append(y)
             zdata.append(z)
             #this for window width try to ompimize it (make it smaller)
-            if stream_vis.window_size is not None:
-                if stream_vis.window_width is not None and stream_vis.window_width<stream_vis.window_size:
-                    if xdatasize > stream_vis.window_width:
-                        stream_vis.ax.set_xlim([x-stream_vis.window_width, x])
-            else:
-                if stream_vis.window_width is not None:
-                    if xdatasize > stream_vis.window_width:
-                        stream_vis.ax.set_xlim([x-stream_vis.window_width, x])
+            if stream_vis.window_width is not None:
+                if len(xdata) > stream_vis.window_width:
+                    stream_vis.ax.set_xlim([xdata[-1]-stream_vis.window_width, x])        
             if low is not None:
                 lows.append(low)
             if high is not None:

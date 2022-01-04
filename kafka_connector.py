@@ -38,7 +38,6 @@ def get_ioloop():
     if ipython and hasattr(ipython, 'kernel'):
         return zmq.eventloop.ioloop.IOLoop.instance()
 
-
 #The IOloop is shared
 ioloop = get_ioloop()
 
@@ -50,6 +49,8 @@ class kafka_connector(threading.Thread):
     def __init__(self, hosts:str="localhost:9092", topic:str=None, parsetype:str=None, parser_extra:str=None, queue_length:int=None, cluster_size:int=1, 
     consumer_config:Dict=None, poll:float=1.0 ,auto_offset:str="earliest", group_id:str="mygroup", decode:str="utf-8", scema_path:str=None,
      probuf_message:str=None, random_sampling:int=None, countmin_width:int=None, countmin_depth:int=None):
+     #confidence (float) – The level of confidence desired add this too ???
+    #error_rate (float) – The desired error rate
         super().__init__()
         #basic kafka confluent settings
         self.hosts = hosts
@@ -234,7 +235,7 @@ class kafka_connector(threading.Thread):
                                     except:
                                         print("self.cms[key] is None")
                                 try:
-                                    self.cms[key].add(str(temp[key]))
+                                    self.cms[key].add(str(temp[key]))           #add.lower() to make every string lower caps ?????????
                                 except:
                                     print("self.cms[key].add(str(temp[key]))")
                         elif type(temp) is list and self.countmin_depth is not None and self.countmin_width is not None:
