@@ -209,7 +209,7 @@ class LinePlot(BaseMplPlot):
         stream_vis.ax.relim()
         stream_vis.ax.autoscale_view(True,True,True)
         if stream_vis.Date:
-            stream_vis.ax.ticklabel_format(useOffset=True)
+            stream_vis.ax.ticklabel_format(useOffset=False)
         else:
             stream_vis.ax.ticklabel_format(useOffset=stream_vis.useOffset)# testing to disable scientific notation
 
