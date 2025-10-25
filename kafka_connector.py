@@ -36,7 +36,7 @@ class kafka_connector(threading.Thread):
     """
     def __init__(self, hosts="localhost:9092", topic=None, parsetype=None, avro_schema=None, queue_length=50000,
                  cluster_size=1, consumer_config=None, poll=1.0, auto_offset="earliest", group_id="mygroup",
-                 decode="utf-8", schema_path=None, protobuf_message=None, anim_interval: float = 1.0, random_sampling=None, countmin_width=None,
+                 decode="utf-8", schema_path=None, protobuf_message=None, random_sampling=None, countmin_width=None,
                  countmin_depth=None, twapi_instance=None):
         """
         Initializes the kafka_connector.
@@ -82,7 +82,7 @@ class kafka_connector(threading.Thread):
         }
         self._quit = threading.Event()
         self.size = 0
-        self.watcher = Watcher(anim_interval=anim_interval)
+        self.watcher = Watcher()
         self.schema = None
         self.reader = None
 

@@ -40,7 +40,7 @@ class pykafka_connector(threading.Thread):
                  auto_commit_enable: bool = False, auto_commit_interval_ms: int = 1000,
                  queued_max_messages: int = 2000, fetch_min_bytes: int = 1,
                  consumer_timeout_ms: int = -1, decode: str = "utf-8",
-                 consumer_start_timeout_ms: int = 5000, schema_path: str = None, anim_interval: float = 1.0,
+                 consumer_start_timeout_ms: int = 5000, schema_path: str = None,
                  random_sampling: int = None, countmin_width: int = None,
                  countmin_depth: int = None, twapi_instance=None, parser_extra=None, protobuf_message=None, zookeeper_hosts:str='127.0.0.1:2181'):
         """
@@ -87,7 +87,7 @@ class pykafka_connector(threading.Thread):
         self.data = Queue(maxsize=queue_length)
         self._quit = threading.Event()
         self.size = 0
-        self.watcher = Watcher(anim_interval=anim_interval)
+        self.watcher = Watcher()
         self.cms = {}
         self.countmin_depth = countmin_depth
         self.countmin_width = countmin_width
