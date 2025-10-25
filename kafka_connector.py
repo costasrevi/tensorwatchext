@@ -46,11 +46,9 @@ class kafka_connector(threading.Thread):
     def quit(self):
         self._quit.set()        
     #Main init to get inputs from user and initiate them
-    def __init__(self, hosts:str="localhost:9092", topic:str=None, parsetype:str=None, parser_extra:str=None, queue_length:int=None, cluster_size:int=1, 
+    def __init__(self, hosts:str="localhost:9092", topic:str=None, parsetype:str=None, avro_scema:str=None, queue_length:int=None, cluster_size:int=1, 
     consumer_config:Dict=None, poll:float=1.0 ,auto_offset:str="earliest", group_id:str="mygroup", decode:str="utf-8", scema_path:str=None,
-     probuf_message:str=None, random_sampling:int=None, countmin_width:int=None, countmin_depth:int=None):
-     #confidence (float) – The level of confidence desired add this too ???
-    #error_rate (float) – The desired error rate
+     probuf_message:str=None, random_sampling:int=None, countmin_width:int=None, countmin_depth:int=None, protobuf_message:str=None):
         super().__init__()
         #basic kafka confluent settings
         self.hosts = hosts
@@ -62,7 +60,8 @@ class kafka_connector(threading.Thread):
         # extra inputs for parsers/decoders
         self.scema_path = scema_path
         self.decode = decode
-        self.parser_extra = parser_extra
+        self.avro_scema = avro_scema
+        self.protobuf_message = protobuf_message
         self.parsetype = parsetype
         #memory optimazation limiting the number of stored data
         self.cms={}
@@ -87,17 +86,17 @@ class kafka_connector(threading.Thread):
             pass
         elif self.parsetype.lower()=='avro' :
             try:
-                schema = avro.schema.parse(parser_extra)
+                schema = avro.schema.parse(avro_scema)
                 self.reader = DatumReader(schema)
             except: 
-                print("avro schema error or avro not installed"+ json.loads(parser_extra))
+                print("avro schema error or avro not installed"+ json.loads(avro_scema))
                 return
         elif self.parsetype.lower()=='protobuf' :
             try:
                 import sys
                 import importlib
                 sys.path.append(scema_path)#scema_path change them
-                mymodule = importlib.import_module(parser_extra)
+                mymodule = importlib.import_module(protobuf_message)
                 method_to_call = getattr(mymodule, probuf_message)
                 self.mymodule = method_to_call()
             except: 
@@ -114,7 +113,7 @@ class kafka_connector(threading.Thread):
         elif self.parsetype.lower()=='xml' :
             try:
                 xml = xmltodict.parse(message)
-                return xml
+                return xml["root"]
             except Exception: 
                 print('xmltodict not installed or Exception occured : ' + message)
         elif self.parsetype.lower()=='protobuf' :
@@ -213,7 +212,7 @@ class kafka_connector(threading.Thread):
                 if self.random_sampling is not None and self.random_sampling>random.randint(0,100):
                     pass
                 else:
-                    if self.parsetype.lower()=="protobuf":
+                    if self.parsetype.lower()=="protobuf" or self.parsetype.lower()=="pickle":
                         temp=self.myparser(msg.value())
                     else:
                         temp=self.myparser(format(msg.value().decode(self.decode)))
