@@ -1,6 +1,6 @@
 from pykafka import KafkaClient
 from pykafka.common import OffsetType
-from tensorwatchext import Watcher
+from .watcher import Watcher
 import threading
 from queue import Queue
 import json
@@ -40,7 +40,8 @@ class pykafka_connector(threading.Thread):
                  auto_commit_enable: bool = False, auto_commit_interval_ms: int = 1000,
                  queued_max_messages: int = 2000, fetch_min_bytes: int = 1,
                  consumer_timeout_ms: int = -1, decode: str = "utf-8",
-                 schema_path: str = None, random_sampling: int = None, countmin_width: int = None,
+                 consumer_start_timeout_ms: int = 5000, schema_path: str = None, anim_interval: float = 1.0,
+                 random_sampling: int = None, countmin_width: int = None,
                  countmin_depth: int = None, twapi_instance=None, parser_extra=None, protobuf_message=None, zookeeper_hosts:str='127.0.0.1:2181'):
         """
         Initializes the pykafka_connector.
@@ -60,6 +61,8 @@ class pykafka_connector(threading.Thread):
             queued_max_messages (int): The maximum number of messages to queue.
             fetch_min_bytes (int): The minimum number of bytes to fetch.
             consumer_timeout_ms (int): The consumer timeout in milliseconds.
+            consumer_start_timeout_ms (int): How long to wait for the consumer to get a partition assignment.
+            anim_interval (float): The animation interval for plots in seconds.
             decode (str): The encoding to use for decoding messages.
             schema_path (str): The path to the Avro or Protobuf schema.
             random_sampling (int): The percentage of messages to sample (0-100).
@@ -84,7 +87,7 @@ class pykafka_connector(threading.Thread):
         self.data = Queue(maxsize=queue_length)
         self._quit = threading.Event()
         self.size = 0
-        self.watcher = Watcher()
+        self.watcher = Watcher(anim_interval=anim_interval)
         self.cms = {}
         self.countmin_depth = countmin_depth
         self.countmin_width = countmin_width
@@ -99,6 +102,7 @@ class pykafka_connector(threading.Thread):
         self.queued_max_messages = queued_max_messages
         self.fetch_min_bytes = fetch_min_bytes
         self.consumer_timeout_ms = consumer_timeout_ms
+        self.consumer_start_timeout_ms = consumer_start_timeout_ms
         self.zookeeper_hosts = zookeeper_hosts
 
         # twapi integration
@@ -194,7 +198,9 @@ class pykafka_connector(threading.Thread):
                     self.twapi_instance.apply_with_debounce()
                     self.first_message_sent = True
             else:
-                logging.warning("Queue is full, dropping message.")
+                temp=self.data.get()
+                self.data.put(parsed_message, block=False)
+                #logging.warning("Queue is full, dropping message.")
 
             # Update Count-Min Sketch if configured
             if isinstance(parsed_message, dict) and self.countmin_width and self.countmin_depth:
@@ -227,6 +233,10 @@ class pykafka_connector(threading.Thread):
                 fetch_min_bytes=self.fetch_min_bytes,
                 zookeeper_connect=self.zookeeper_hosts
             )
+            # Give the consumer some time to get partition assignments
+            if self.consumer_start_timeout_ms > 0:
+                logging.info(f"Waiting {self.consumer_start_timeout_ms}ms for balanced consumer to start...")
+                time.sleep(self.consumer_start_timeout_ms / 1000.0)
         else:
             consumer = topic.get_simple_consumer(
                 auto_offset_reset=self.auto_offset_reset,
