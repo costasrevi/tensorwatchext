@@ -29,6 +29,7 @@ try:
 except ImportError:
     protobuf_to_dict = None
 
+
 class kafka_connector(threading.Thread):
     """
     A Kafka consumer that runs in a separate thread to consume messages from a Kafka topic.
@@ -37,7 +38,7 @@ class kafka_connector(threading.Thread):
     def __init__(self, hosts="localhost:9092", topic=None, parsetype=None, avro_schema=None, queue_length=50000,
                  cluster_size=1, consumer_config=None, poll=1.0, auto_offset="earliest", group_id="mygroup",
                  decode="utf-8", schema_path=None, protobuf_message=None, random_sampling=None, countmin_width=None,
-                 countmin_depth=None, twapi_instance=None):
+                 countmin_depth=None, twapi_instance=None, ordering_field=None):
         """
         Initializes the kafka_connector.
 
@@ -53,13 +54,13 @@ class kafka_connector(threading.Thread):
             auto_offset (str): The offset reset policy.
             group_id (str): The consumer group ID.
             decode (str): The encoding to use for decoding messages.
-            anim_interval (float): The animation interval for plots in seconds.
             schema_path (str): The path to the Avro schema file.
             protobuf_message (str): The name of the Protobuf message class.
             random_sampling (int): The percentage of messages to sample (0-100).
             countmin_width (int): The width of the Count-Min Sketch.
             countmin_depth (int): The depth of the Count-Min Sketch.
             twapi_instance: An instance of the TensorWatch API for updating metrics.
+            ordering_field (str): Optional message field to maintain global ordering.
         """
         super().__init__()
         self.hosts = hosts or "localhost:9092"
@@ -92,6 +93,10 @@ class kafka_connector(threading.Thread):
         self.last_report_time = time.time()
         self.first_message_sent = False
 
+        # --- NEW: Optional ordering field ---
+        self.ordering_field = ordering_field
+        self.reordering_buffer = []
+
         # Load Avro Schema if needed
         if parsetype == "avro" and avro:
             try:
@@ -108,7 +113,6 @@ class kafka_connector(threading.Thread):
                 import importlib
                 module = importlib.import_module(protobuf_message)
                 self.protobuf_class = getattr(module, protobuf_message)
-
             except Exception as e:
                 logging.error(f"Protobuf Import Error: {e}")
                 print(f"Protobuf Import Error: {e}")
@@ -156,31 +160,50 @@ class kafka_connector(threading.Thread):
             # Apply random sampling if configured
             if self.random_sampling and self.random_sampling > random.randint(0, 100):
                 return
-            
             message = msg.value().decode(self.decode)
+            if message is None:
+                return
             parsed_message = self.myparser(message)
 
             # Calculate and record latency if send_time is in the message
             if parsed_message and isinstance(parsed_message, dict) and 'send_time' in parsed_message:
                 self.received_count += 1
-                send_time = parsed_message['send_time']
-                latency = receive_time - send_time
-                self.latencies.append(latency)
-                parsed_message['latency'] = latency
+                if parsed_message['send_time']:
+                    send_time = parsed_message['send_time']
+                    latency = receive_time - send_time
+                    self.latencies.append(latency)
+                    parsed_message['latency'] = latency
                 parsed_message['receive_time'] = receive_time
 
-            # Add the parsed message to the queue if it's not full
-            if parsed_message and not self.data.full():
-                self.data.put(parsed_message, block=False)
-                # Notify the twapi_instance on the first message
-                if not self.first_message_sent and self.twapi_instance:
-                    logging.info("First message received, enabling apply button.")
-                    self.twapi_instance.enable_apply_button()
-                    self.twapi_instance.apply_with_debounce()
-                    self.first_message_sent = True
-            elif self.data.full():
-                temp=self.data.get()
-                self.data.put(parsed_message, block=False)
+            # --- Global reordering based on ordering_field ---
+            if self.ordering_field and parsed_message and self.ordering_field in parsed_message:
+                self.reordering_buffer.append(parsed_message)
+                self.reordering_buffer.sort(key=lambda m: m[self.ordering_field])
+                while self.reordering_buffer:
+                    m = self.reordering_buffer.pop(0)
+                    if not self.first_message_sent and self.twapi_instance:
+                        logging.info("First message received, enabling apply button.")
+                        self.twapi_instance.enable_apply_button()
+                        self.twapi_instance.apply_with_debounce()
+                        self.first_message_sent = True
+                    if not self.data.full():
+                        self.data.put(m, block=False)
+                    else:
+                        _ = self.data.get()
+                        self.data.put(parsed_message, block=False)
+            else:
+                # no reordering, just put it in the queue
+                if parsed_message:
+                    if not self.first_message_sent and self.twapi_instance:
+                        logging.info("First message received, enabling apply button.")
+                        self.twapi_instance.enable_apply_button()
+                        self.twapi_instance.apply_with_debounce()
+                        self.first_message_sent = True
+                    if not self.data.full():
+                        self.data.put(parsed_message, block=False)
+                    else:
+                        _ = self.data.get()
+                        self.data.put(parsed_message, block=False)
 
             # Update Count-Min Sketch if configured
             if isinstance(parsed_message, dict) and self.countmin_width and self.countmin_depth:
@@ -195,23 +218,51 @@ class kafka_connector(threading.Thread):
 
     def consumer_loop(self):
         """
-        The main loop for the Kafka consumer. It polls for messages, processes them,
-        and handles errors.
+        The main loop for the Kafka consumer. It polls for messages, accumulates
+        them in an adaptive batch, and processes them. Handles parsing, CMS,
+        latency, and TensorWatch observation.
         """
         logging.info(f"Starting consumer loop for topic '{self.topic}'")
         consumer = Consumer(self.consumer_config)
         consumer.subscribe([self.topic])
 
+        batch = []
         while not self._quit.is_set():
             msg = consumer.poll(self.poll)
             if msg and not msg.error():
-                self.process_message(msg)
+                batch.append(msg)
+                
+                # --- Adaptive batch size based on queue fill ratio ---
+                fill_ratio = self.data.qsize() / self.queue_length
+                if fill_ratio < 0.5:
+                    target_batch_size = 50  # small batch
+                elif fill_ratio < 0.8:
+                    target_batch_size = 200  # medium batch
+                else:
+                    target_batch_size = 500  # large batch to catch up
+                
+                # Process batch if threshold reached
+                if len(batch) >= target_batch_size:
+                    for m in batch:
+                        self.process_message(m)
+                    batch.clear()
+
             elif msg and msg.error():
                 logging.error(f"Kafka Error: {msg.error()}")
                 print(f"Kafka Error: {msg.error()}")
 
+            # Optional: flush any remaining batch if queue is low
+            if batch and self.data.qsize() < 10:
+                for m in batch:
+                    self.process_message(m)
+                batch.clear()
+
+        # Final flush before exiting
+        for m in batch:
+            self.process_message(m)
         consumer.close()
         logging.info("Consumer loop stopped")
+
 
     def run(self):
         """
@@ -226,18 +277,18 @@ class kafka_connector(threading.Thread):
             # Observe the data queue with TensorWatch
             if not self.data.empty():
                 self.watcher.observe(data=list(self.data.queue), size=self.size, cms=self.cms)
-            
+
             # --- BENCHMARK REPORTING ---
             current_time = time.time()
-            if current_time - self.last_report_time > 5.0: # Report every 5 seconds
+            if current_time - self.last_report_time > 5.0:  # Report every 5 seconds
                 if self.latencies:
                     avg_latency = sum(self.latencies) / len(self.latencies)
                     max_latency = max(self.latencies)
                     min_latency = min(self.latencies)
-                    
+
                     time_since_last_report = current_time - self.last_report_time
                     throughput = self.received_count / time_since_last_report if time_since_last_report > 0 else 0
-                    
+
                     stats_str = (f"Recv Throughput: {throughput:.2f} msgs/s | "
                                  f"Send-Recv Latency (ms): "
                                  f"Avg: {avg_latency*1000:.2f}, "
