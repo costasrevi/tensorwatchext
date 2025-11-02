@@ -48,6 +48,31 @@ class pykafka_connector(threading.Thread):
         Initializes the pykafka_connector.
 
         Args:
+                    hosts (str): Comma-separated list of Kafka brokers.
+            topic (str): The Kafka topic to consume from.
+            parsetype (str): The format of the messages (e.g., "json", "pickle", "xml", "avro", "protobuf").
+            queue_length (int): The maximum number of messages to store in the internal queue.
+            cluster_size (int): The number of consumer threads to run.
+            consumer_group (bytes): The consumer group ID.
+            auto_offset_reset (OffsetType): The offset reset policy.
+            fetch_message_max_bytes (int): The maximum size of a message to fetch.
+            num_consumer_fetchers (int): The number of fetcher threads.
+            auto_commit_enable (bool): Whether to enable auto-commit.
+            auto_commit_interval_ms (int): The auto-commit interval in milliseconds.
+            queued_max_messages (int): The maximum number of messages to queue.
+            fetch_min_bytes (int): The minimum number of bytes to fetch.
+            consumer_timeout_ms (int): The consumer timeout in milliseconds.
+            consumer_start_timeout_ms (int): How long to wait for the consumer to get a partition assignment.
+            anim_interval (float): The animation interval for plots in seconds.
+            decode (str): The encoding to use for decoding messages.
+            schema_path (str): The path to the Avro or Protobuf schema.
+            random_sampling (int): The percentage of messages to sample (0-100).
+            countmin_width (int): The width of the Count-Min Sketch.
+            countmin_depth (int): The depth of the Count-Min Sketch.
+            twapi_instance: An instance of the TensorWatch API for updating metrics.
+            parser_extra (str): Extra information for the parser (e.g., Avro schema, Protobuf module).
+            protobuf_message (str): The name of the Protobuf message class.
+            zookeeper_hosts (str): Comma-separated list of Zookeeper hosts.
             ordering_field (str): Optional message field for global ordering.
         """
         super().__init__()
@@ -209,7 +234,6 @@ class pykafka_connector(threading.Thread):
         them in an adaptive batch, and processes them efficiently.
         """
         logging.info(f"Starting pykafka consumer loop for topic '{self.topic}'")
-        from pykafka import KafkaClient
         client = KafkaClient(hosts=self.hosts)
         topic = client.topics[self.topic]
 
