@@ -37,7 +37,7 @@ class kafka_connector(threading.Thread):
     A Kafka consumer that runs in a separate thread to consume messages from a Kafka topic.
     It supports various message formats and integrates with TensorWatch for real-time data visualization.
     """
-    def __init__(self, hosts="localhost:9092", topic=None, parsetype=None, avro_schema=None, queue_length=50000,
+    def __init__(self, hosts="localhost:9092", topic=None, parsetype=None, queue_length=50000,
                  cluster_size=1, consumer_config=None, poll=1.0, auto_offset="earliest", group_id="mygroup", parser_extra=None,
                  decode="utf-8", schema_path=None, protobuf_message=None, random_sampling=None, countmin_width=None,
                  countmin_depth=None, twapi_instance=None, ordering_field=None):
@@ -48,14 +48,14 @@ class kafka_connector(threading.Thread):
             hosts (str): Comma-separated list of Kafka brokers.
             topic (str): The Kafka topic to consume from.
             parsetype (str): The format of the messages (e.g., "json", "pickle", "xml", "avro", "protobuf").
-            avro_schema (str): The Avro schema for message deserialization.
+
             queue_length (int): The maximum number of messages to store in the internal queue.
             cluster_size (int): The number of consumer threads to run.
             consumer_config (dict): A dictionary of Kafka consumer configuration settings.
             poll (float): The timeout for polling for new messages from Kafka.
             auto_offset (str): The offset reset policy.
             group_id (str): The consumer group ID.
-            parser_extra (str): Extra information for the parser (e.g., Protobuf module).
+            parser_extra (str): Extra information for the parser (e.g.avro_schema, Protobuf module).
             decode (str): The encoding to use for decoding messages.
             schema_path (str): The path to the Avro schema file.
             protobuf_message (str): The name of the Protobuf message class.
@@ -107,10 +107,10 @@ class kafka_connector(threading.Thread):
                 # self.schema = avro.schema.parse(avro_schema)
                 # self.reader = DatumReader(self.schema)
                 import fastavro
-                if isinstance(avro_schema, str):
-                    self.avro_schema = json.loads(avro_schema)
-                elif isinstance(avro_schema, dict):
-                    self.avro_schema = avro_schema
+                if isinstance(parser_extra, str):
+                    self.avro_schema = json.loads(parser_extra)
+                elif isinstance(parser_extra, dict):
+                    self.avro_schema = parser_extra
                 self._bytes_io = io.BytesIO()
             except Exception as e:
                 logging.error(f"Avro Schema Error: {e}, Avro may not work")

@@ -17,8 +17,10 @@ except ImportError:
     xmltodict = None
 
 try:
-    import avro.schema
-    from avro.io import DatumReader, BinaryDecoder
+    # import avro.schema
+    # from avro.io import DatumReader, BinaryDecoder
+    from fastavro import schemaless_reader
+    import io
 except ImportError:
     avro = None
 
@@ -121,23 +123,29 @@ class pykafka_connector(threading.Thread):
         # Parsers initialization
         self.reader = None
         self.protobuf_class = None
-        if self.parsetype:
-            if self.parsetype.lower() == 'avro' and avro:
-                try:
-                    schema = avro.schema.parse(parser_extra)
-                    self.reader = DatumReader(schema)
-                except Exception as e:
-                    logging.error(f"Avro schema error or avro not installed: {e}")
-            elif self.parsetype.lower() == 'protobuf' and protobuf_to_dict:
-                try:
-                    import sys
-                    import importlib
-                    if schema_path:
-                        sys.path.append(schema_path)
-                    mymodule = importlib.import_module(parser_extra)
-                    self.protobuf_class = getattr(mymodule, protobuf_message)
-                except Exception as e:
-                    logging.error(f"Error importing protobuf: {e}")
+        # if self.parsetype:
+        if self.parsetype.lower() == 'avro' and avro:
+            try:
+                import fastavro
+                if isinstance(parser_extra, str):
+                    self.avro_schema = json.loads(parser_extra)
+                elif isinstance(parser_extra, dict):
+                    self.avro_schema = parser_extra
+                self._bytes_io = io.BytesIO()
+                # schema = avro.schema.parse(parser_extra)
+                # self.reader = DatumReader(schema)
+            except Exception as e:
+                logging.error(f"Avro schema error or avro not installed: {e}")
+        elif self.parsetype.lower() == 'protobuf' and protobuf_to_dict:
+            try:
+                import sys
+                import importlib
+                if schema_path:
+                    sys.path.append(schema_path)
+                mymodule = importlib.import_module(parser_extra)
+                self.protobuf_class = getattr(mymodule, protobuf_message)
+            except Exception as e:
+                logging.error(f"Error importing protobuf: {e}")
 
         self.start()
 
@@ -157,9 +165,14 @@ class pykafka_connector(threading.Thread):
                 dynamic_message.ParseFromString(message)
                 return protobuf_to_dict(dynamic_message)
             elif self.parsetype.lower() == 'avro' and self.reader:
-                message_bytes = io.BytesIO(message)
-                decoder = BinaryDecoder(message_bytes)
-                return self.reader.read(decoder)
+                # message_bytes = io.BytesIO(message)
+                # decoder = BinaryDecoder(message_bytes)
+                self._bytes_io.seek(0)
+                self._bytes_io.truncate()
+                self._bytes_io.write(message)
+                self._bytes_io.seek(0)
+                return schemaless_reader(self._bytes_io, self.avro_schema)
+                # return self.reader.read(decoder)
         except Exception as e:
             logging.error(f"Parsing Error ({self.parsetype}): {e}")
         return None
