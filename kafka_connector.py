@@ -17,8 +17,10 @@ except ImportError:
     xmltodict = None
 
 try:
-    import avro.schema
-    from avro.io import DatumReader, BinaryDecoder
+    # import avro.schema
+    # from avro.io import DatumReader, BinaryDecoder
+    # import io
+    from fastavro import schemaless_reader
     import io
 except ImportError:
     avro = None
@@ -36,7 +38,7 @@ class kafka_connector(threading.Thread):
     It supports various message formats and integrates with TensorWatch for real-time data visualization.
     """
     def __init__(self, hosts="localhost:9092", topic=None, parsetype=None, avro_schema=None, queue_length=50000,
-                 cluster_size=1, consumer_config=None, poll=1.0, auto_offset="earliest", group_id="mygroup",
+                 cluster_size=1, consumer_config=None, poll=1.0, auto_offset="earliest", group_id="mygroup", parser_extra=None,
                  decode="utf-8", schema_path=None, protobuf_message=None, random_sampling=None, countmin_width=None,
                  countmin_depth=None, twapi_instance=None, ordering_field=None):
         """
@@ -53,6 +55,7 @@ class kafka_connector(threading.Thread):
             poll (float): The timeout for polling for new messages from Kafka.
             auto_offset (str): The offset reset policy.
             group_id (str): The consumer group ID.
+            parser_extra (str): Extra information for the parser (e.g., Protobuf module).
             decode (str): The encoding to use for decoding messages.
             schema_path (str): The path to the Avro schema file.
             protobuf_message (str): The name of the Protobuf message class.
@@ -68,6 +71,7 @@ class kafka_connector(threading.Thread):
         self.cluster_size = cluster_size
         self.decode = decode
         self.parsetype = parsetype
+        self.parser_extra = parser_extra
         self.protobuf_message = protobuf_message
         self.queue_length = queue_length
         self.data = Queue(maxsize=queue_length)
@@ -100,8 +104,14 @@ class kafka_connector(threading.Thread):
         # Load Avro Schema if needed
         if parsetype == "avro" and avro:
             try:
-                self.schema = avro.schema.parse(avro_schema)
-                self.reader = DatumReader(self.schema)
+                # self.schema = avro.schema.parse(avro_schema)
+                # self.reader = DatumReader(self.schema)
+                import fastavro
+                if isinstance(avro_schema, str):
+                    self.avro_schema = json.loads(avro_schema)
+                elif isinstance(avro_schema, dict):
+                    self.avro_schema = avro_schema
+                self._bytes_io = io.BytesIO()
             except Exception as e:
                 logging.error(f"Avro Schema Error: {e}, Avro may not work")
                 print(f"Avro Schema Error: {e}, Avro may not work")
@@ -111,8 +121,12 @@ class kafka_connector(threading.Thread):
         if parsetype == "protobuf" and protobuf_to_dict:
             try:
                 import importlib
-                module = importlib.import_module(protobuf_message)
-                self.protobuf_class = getattr(module, protobuf_message)
+                import sys
+                if schema_path:
+                    sys.path.append(schema_path)
+                # Use parser_extra for module name, protobuf_message for class name
+                module = importlib.import_module(self.parser_extra)
+                self.protobuf_class = getattr(module, self.protobuf_message)
             except Exception as e:
                 logging.error(f"Protobuf Import Error: {e}")
                 print(f"Protobuf Import Error: {e}")
@@ -132,19 +146,24 @@ class kafka_connector(threading.Thread):
         """
         try:
             if self.parsetype is None or self.parsetype.lower() == "json":
-                return json.loads(message)
+                return json.loads(message.decode(self.decode))
             elif self.parsetype.lower() == "pickle":
                 return pickle.loads(message)
             elif self.parsetype.lower() == "xml" and xmltodict:
-                return xmltodict.parse(message)["root"]
+                return xmltodict.parse(message.decode(self.decode))["root"]
             elif self.parsetype.lower() == "protobuf" and protobuf_to_dict:
                 if self.protobuf_class:
-                    dynamic_message = self.protobuf_class()
+                    dynamic_message = self.protobuf_class() # message is already bytes
                     dynamic_message.ParseFromString(message)
                     return protobuf_to_dict(dynamic_message)
             elif self.parsetype.lower() == "avro" and avro:
-                decoder = BinaryDecoder(io.BytesIO(message))
-                return self.reader.read(decoder)
+                # decoder = BinaryDecoder(io.BytesIO(message))
+                self._bytes_io.seek(0)
+                self._bytes_io.truncate()
+                self._bytes_io.write(message)
+                self._bytes_io.seek(0)
+                return schemaless_reader(self._bytes_io, self.avro_schema)
+                # return self.reader.read(decoder)
         except Exception as e:
             logging.error(f"Parsing Error ({self.parsetype}): {e}")
             print(f"Parsing Error ({self.parsetype}): {e}")
@@ -160,7 +179,7 @@ class kafka_connector(threading.Thread):
             # Apply random sampling if configured
             if self.random_sampling and self.random_sampling > random.randint(0, 100):
                 return
-            message = msg.value().decode(self.decode)
+            message = msg.value() # Keep as bytes for parsers
             if message is None:
                 return
             parsed_message = self.myparser(message)
