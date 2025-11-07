@@ -23,12 +23,14 @@ try:
     from fastavro import schemaless_reader
     import io
 except ImportError:
+    print("⚠️ avro is not installed. Please run 'pip install fastavro'.")
     avro = None
 
 try:
-    from protobuf_to_dict import protobuf_to_dict
-    from google.protobuf import message
+    from google.protobuf.json_format import MessageToDict
+    protobuf_to_dict = lambda msg: MessageToDict(msg, preserving_proto_field_name=True)
 except ImportError:
+    print("⚠️ protobuf is not installed. Please run 'pip install protobuf'.")
     protobuf_to_dict = None
 
 
@@ -48,7 +50,6 @@ class kafka_connector(threading.Thread):
             hosts (str): Comma-separated list of Kafka brokers.
             topic (str): The Kafka topic to consume from.
             parsetype (str): The format of the messages (e.g., "json", "pickle", "xml", "avro", "protobuf").
-
             queue_length (int): The maximum number of messages to store in the internal queue.
             cluster_size (int): The number of consumer threads to run.
             consumer_config (dict): A dictionary of Kafka consumer configuration settings.
@@ -122,16 +123,20 @@ class kafka_connector(threading.Thread):
             try:
                 import importlib
                 import sys
-                if schema_path:
-                    sys.path.append(schema_path)
+                if not schema_path or not isinstance(schema_path, str):
+                    raise ValueError(f"Invalid schema_path: {schema_path}")
+                sys.path.append(schema_path)
                 # Use parser_extra for module name, protobuf_message for class name
                 module = importlib.import_module(self.parser_extra)
                 self.protobuf_class = getattr(module, self.protobuf_message)
+                # print("✅ Protobuf class loaded:", self.protobuf_class)
             except Exception as e:
+                import traceback
+                print("❌ Protobuf Import failed!")
+                traceback.print_exc()
                 logging.error(f"Protobuf Import Error: {e}")
                 print(f"Protobuf Import Error: {e}")
                 self.protobuf_class = None
-
         self.start()
 
     def myparser(self, message):
@@ -153,9 +158,12 @@ class kafka_connector(threading.Thread):
                 return xmltodict.parse(message.decode(self.decode))["root"]
             elif self.parsetype.lower() == "protobuf" and protobuf_to_dict:
                 if self.protobuf_class:
-                    dynamic_message = self.protobuf_class() # message is already bytes
-                    dynamic_message.ParseFromString(message)
-                    return protobuf_to_dict(dynamic_message)
+                    try:
+                        dynamic_message = self.protobuf_class() # message is already bytes
+                        dynamic_message.ParseFromString(message)
+                        return protobuf_to_dict(dynamic_message)
+                    except Exception as e:
+                        print(f"❌ Protobuf parsing error: {e}")
             elif self.parsetype.lower() == "avro" and avro:
                 # decoder = BinaryDecoder(io.BytesIO(message))
                 self._bytes_io.seek(0)
