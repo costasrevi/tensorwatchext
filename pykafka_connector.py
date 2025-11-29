@@ -213,9 +213,8 @@ class pykafka_connector(threading.Thread):
                 while self.reordering_buffer:
                     m = self.reordering_buffer.pop(0)
                     if not self.first_message_sent and self.twapi_instance:
-                        logging.info("First message received, enabling apply button.")
-                        self.twapi_instance.enable_apply_button()
-                        self.twapi_instance.apply_with_debounce()
+                        logging.info("First message received, sending ready signal to the queue.")
+                        self.twapi_instance.put(("ready", None))
                         self.first_message_sent = True
                     if not self.data.full():
                         self.data.put(m, block=False)
@@ -224,9 +223,8 @@ class pykafka_connector(threading.Thread):
                         self.data.put(parsed_message, block=False)
             else:
                 if not self.first_message_sent and self.twapi_instance:
-                    logging.info("First message received, enabling apply button.")
-                    self.twapi_instance.enable_apply_button()
-                    self.twapi_instance.apply_with_debounce()
+                    logging.info("First message received, sending ready signal to the queue.")
+                    self.twapi_instance.put(("ready", None))
                     self.first_message_sent = True
                 if not self.data.full():
                     self.data.put(parsed_message, block=False)
@@ -342,7 +340,7 @@ class pykafka_connector(threading.Thread):
                                  f"Max: {max_latency*1000:.2f}")
                     
                     if self.twapi_instance:
-                        self.twapi_instance.update_metrics(stats_str)
+                        self.twapi_instance.put(("metrics", stats_str))
 
                     self.latencies = []
                     self.received_count = 0

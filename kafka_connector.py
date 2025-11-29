@@ -212,9 +212,8 @@ class kafka_connector(threading.Thread):
                 while self.reordering_buffer:
                     m = self.reordering_buffer.pop(0)
                     if not self.first_message_sent and self.twapi_instance:
-                        logging.info("First message received, enabling apply button.")
-                        self.twapi_instance.enable_apply_button()
-                        self.twapi_instance.apply_with_debounce()
+                        logging.info("First message received, sending ready signal to the queue.")
+                        self.twapi_instance.put(("ready", None))
                         self.first_message_sent = True
                     if not self.data.full():
                         self.data.put(m, block=False)
@@ -225,9 +224,8 @@ class kafka_connector(threading.Thread):
                 # no reordering, just put it in the queue
                 if parsed_message:
                     if not self.first_message_sent and self.twapi_instance:
-                        logging.info("First message received, enabling apply button.")
-                        self.twapi_instance.enable_apply_button()
-                        self.twapi_instance.apply_with_debounce()
+                        logging.info("First message received, sending ready signal to the queue.")
+                        self.twapi_instance.put(("ready", None))
                         self.first_message_sent = True
                     if not self.data.full():
                         self.data.put(parsed_message, block=False)
@@ -329,7 +327,7 @@ class kafka_connector(threading.Thread):
 
                     # Update the TensorWatch API with the latest metrics
                     if self.twapi_instance:
-                        self.twapi_instance.update_metrics(stats_str)
+                        self.twapi_instance.put(("metrics", stats_str))
 
                     # Reset stats for the next interval
                     self.latencies = []
