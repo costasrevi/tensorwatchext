@@ -11,7 +11,7 @@ from . import utils
 import threading, time
 
 class Watcher(WatcherBase):
-    def __init__(self, filename:str=None, port:int=0, srv_name:str=None):
+    def __init__(self, filename:str=None, port:int=None, srv_name:str=None):
         super(Watcher, self).__init__()
 
         self.port = port
@@ -29,17 +29,22 @@ class Watcher(WatcherBase):
         self._open_devices()
 
     def _open_devices(self):
-        if self.port is not None:
-            self._clisrv = ZmqWrapper.ClientServer(port=DefaultPorts.CliSrv+self.port, 
-                is_server=True, callback=self._clisrv_callback)
+        # if self.port is None, ZmqWrapper will find a free port
+        clisrv_port = DefaultPorts.CliSrv + self.port if self.port is not None else None
+        self._clisrv = ZmqWrapper.ClientServer(port=clisrv_port,
+            is_server=True, callback=self._clisrv_callback)
 
-            # notify existing listeners of our ID
-            self._zmq_stream_pub = self._stream_factory.get_streams(stream_types=['tcp:'+str(self.port)], for_write=True)[0]
+        # If a port was auto-assigned, learn it so we can use the same offset for the pub-sub stream
+        if self.port is None:
+            self.port = self._clisrv.port - DefaultPorts.CliSrv
 
-            # ZMQ quirk: we must wait a bit after opening port and before sending message
-            # TODO: can we do better?
-            self._th = threading.Thread(target=self._send_server_start)
-            self._th.start()
+        # notify existing listeners of our ID
+        self._zmq_stream_pub = self._stream_factory.get_streams(stream_types=['tcp:'+str(self.port)], for_write=True)[0]
+
+        # ZMQ quirk: we must wait a bit after opening port and before sending message
+        # TODO: can we do better?
+        self._th = threading.Thread(target=self._send_server_start)
+        self._th.start()
 
     def _send_server_start(self):
         time.sleep(2)

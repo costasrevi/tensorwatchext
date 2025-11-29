@@ -36,6 +36,8 @@ class pykafka_connector(threading.Thread):
     A Kafka consumer that uses the pykafka library to consume messages from a Kafka topic.
     It runs in a separate thread and supports various message formats.
     """
+
+
     def __init__(self, hosts: str = "localhost:9092", topic: str = None, parsetype: str = None, queue_length: int = 50000, cluster_size: int = 1,
                  consumer_group: bytes = b'default', auto_offset_reset: OffsetType = OffsetType.EARLIEST,
                  fetch_message_max_bytes: int = 1024 * 1024, num_consumer_fetchers: int = 1,
@@ -44,8 +46,8 @@ class pykafka_connector(threading.Thread):
                  consumer_timeout_ms: int = -1, decode: str = "utf-8",
                  consumer_start_timeout_ms: int = 5000, schema_path: str = None,
                  random_sampling: int = None, countmin_width: int = None,
-                 countmin_depth: int = None, twapi_instance=None, parser_extra=None, protobuf_message=None,
-                 zookeeper_hosts: str = '127.0.0.1:2181', ordering_field: str = None):
+                 countmin_depth: int = None, twapi_instance=None, parser_extra=None, protobuf_message=None, zookeeper_hosts: str = '127.0.0.1:2181',
+                 ordering_field: str = None, zmq_port: int = None):
         """
         Initializes the pykafka_connector.
 
@@ -76,6 +78,7 @@ class pykafka_connector(threading.Thread):
             protobuf_message (str): The name of the Protobuf message class.
             zookeeper_hosts (str): Comma-separated list of Zookeeper hosts.
             ordering_field (str): Optional message field for global ordering.
+            zmq_port (int): The port offset for the ZMQ watcher. If None, an automatic offset is assigned.
         """
         super().__init__()
         self.hosts = hosts
@@ -91,7 +94,7 @@ class pykafka_connector(threading.Thread):
         self.data = Queue(maxsize=queue_length)
         self._quit = threading.Event()
         self.size = 0
-        self.watcher = Watcher()
+        self.watcher = Watcher(port=zmq_port)
         self.cms = {}
         self.countmin_depth = countmin_depth
         self.countmin_width = countmin_width

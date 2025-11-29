@@ -97,5 +97,3 @@ class StreamFactory:
             return Stream()
 
         raise ValueError('stream_type "{}" has unknown type'.format(stream_type))
-
-

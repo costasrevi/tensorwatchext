@@ -39,10 +39,12 @@ class kafka_connector(threading.Thread):
     A Kafka consumer that runs in a separate thread to consume messages from a Kafka topic.
     It supports various message formats and integrates with TensorWatch for real-time data visualization.
     """
+
+
     def __init__(self, hosts="localhost:9092", topic=None, parsetype=None, queue_length=50000,
                  cluster_size=1, consumer_config=None, poll=1.0, auto_offset="earliest", group_id="mygroup", parser_extra=None,
                  decode="utf-8", schema_path=None, protobuf_message=None, random_sampling=None, countmin_width=None,
-                 countmin_depth=None, twapi_instance=None, ordering_field=None):
+                 countmin_depth=None, twapi_instance=None, ordering_field=None, zmq_port=None):
         """
         Initializes the kafka_connector.
 
@@ -65,6 +67,7 @@ class kafka_connector(threading.Thread):
             countmin_depth (int): The depth of the Count-Min Sketch.
             twapi_instance: An instance of the TensorWatch API for updating metrics.
             ordering_field (str): Optional message field to maintain global ordering.
+            zmq_port (int): The port offset for the ZMQ watcher. If None, an automatic offset is assigned.
         """
         super().__init__()
         self.hosts = hosts or "localhost:9092"
@@ -88,7 +91,7 @@ class kafka_connector(threading.Thread):
         }
         self._quit = threading.Event()
         self.size = 0
-        self.watcher = Watcher()
+        self.watcher = Watcher(port=zmq_port)
         self.schema = None
         self.reader = None
 

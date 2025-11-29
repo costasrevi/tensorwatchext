@@ -220,6 +220,7 @@ class ZmqWrapper:
         def __init__(self, port, is_server, callback=None, host=None):
             self._socket = None
             self._stream = None
+            self.port = port
 
             ZmqWrapper.initialize()
             utils.debug_log('Creating ClientServer', (is_server, port), verbosity=1)
@@ -253,9 +254,23 @@ class ZmqWrapper:
             if is_server:
                 host = host or '127.0.0.1'
                 self._socket = context.socket(zmq.REP)
-                utils.debug_log('Binding socket', (host, port), verbosity=5)
-                self._socket.bind('tcp://%s:%d' % (host, port))
-                utils.debug_log('Bound socket', (host, port), verbosity=5)
+                if port is None:
+                    port = 41459 # DefaultPorts.CliSrv
+                    while True:
+                        try:
+                            self._socket.bind('tcp://%s:%d' % (host, port))
+                            self.port = port
+                            utils.debug_log('Bound socket', (host, port), verbosity=5)
+                            break
+                        except zmq.ZMQError as e:
+                            if e.errno == zmq.EADDRINUSE:
+                                port += 1
+                                continue
+                            else:
+                                raise
+                else:
+                    self._socket.bind('tcp://%s:%d' % (host, port))
+                    utils.debug_log('Bound socket', (host, port), verbosity=5)
             else:
                 host = host or 'localhost'
                 self._socket = context.socket(zmq.REQ)
